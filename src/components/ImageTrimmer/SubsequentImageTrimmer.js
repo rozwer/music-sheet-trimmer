@@ -50,6 +50,37 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     }
   }, [image, trimSettings]);
 
+  // 自動保存機能の実装
+  const autoSaveSettings = (newRotation, newYOffset, newLeftTrim, newRightTrim) => {
+    if (!canvasRef.current) return;
+    
+    const canvas = canvasRef.current;
+    const dataUrl = canvas.toDataURL();
+    
+    const updatedImages = [...images];
+    updatedImages[imageIndex] = {
+      ...updatedImages[imageIndex],
+      trimmedPreview: dataUrl,
+      settings: {
+        rotation: newRotation,
+        yOffset: newYOffset,
+        leftTrim: newLeftTrim,
+        rightTrim: newRightTrim
+      }
+    };
+    setImages(updatedImages);
+  };
+  
+  // コンポーネントのアンマウント時や変更時に設定を保存
+  useEffect(() => {
+    return () => {
+      // コンポーネントのアンマウント時に最終設定を保存
+      if (canvasRef.current && imageObj) {
+        autoSaveSettings(rotation, yOffset, leftTrim, rightTrim);
+      }
+    };
+  }, [imageIndex]);
+
   // ハイライト位置の更新
   const updateHighlightPosition = (offset, left = leftTrim, right = rightTrim) => {
     if (highlightRef.current && imageContainerRef.current && imageObj) {
@@ -129,6 +160,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     
     if (imageObj) {
       renderCanvas(imageObj, newRotation, yOffset, leftTrim, rightTrim);
+      // 設定変更時に自動適用
+      autoSaveSettings(newRotation, yOffset, leftTrim, rightTrim);
     }
   };
 
@@ -139,6 +172,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     
     if (imageObj) {
       renderCanvas(imageObj, rotation, newValue, leftTrim, rightTrim);
+      // 設定変更時に自動適用
+      autoSaveSettings(rotation, newValue, leftTrim, rightTrim);
     }
   };
 
@@ -154,6 +189,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     
     if (imageObj) {
       renderCanvas(imageObj, rotation, yOffset, validatedValue, rightTrim);
+      // 設定変更時に自動適用
+      autoSaveSettings(rotation, yOffset, validatedValue, rightTrim);
     }
   };
 
@@ -168,6 +205,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     
     if (imageObj) {
       renderCanvas(imageObj, rotation, yOffset, leftTrim, validatedValue);
+      // 設定変更時に自動適用
+      autoSaveSettings(rotation, yOffset, leftTrim, validatedValue);
     }
   };
 
@@ -225,6 +264,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     // 状態とキャンバスを更新
     setYOffset(newYOffset);
     renderCanvas(imageObj, rotation, newYOffset, leftTrim, rightTrim);
+    // ドラッグ操作時も自動適用
+    autoSaveSettings(rotation, newYOffset, leftTrim, rightTrim);
   };
 
   // ドラッグ終了
@@ -273,27 +314,6 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     };
   }, [isDragging]);
 
-  // 設定を確定して画像データを更新
-  const handleApplySettings = () => {
-    if (!canvasRef.current) return;
-    
-    const canvas = canvasRef.current;
-    const dataUrl = canvas.toDataURL();
-    
-    const updatedImages = [...images];
-    updatedImages[imageIndex] = {
-      ...updatedImages[imageIndex],
-      trimmedPreview: dataUrl,
-      settings: {
-        rotation,
-        yOffset,
-        leftTrim,
-        rightTrim
-      }
-    };
-    setImages(updatedImages);
-  };
-
   // トリミング設定が未適用の場合
   if (!trimSettings.applied) {
     return (
@@ -313,7 +333,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     <Box>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
-          トリミング調整
+          トリミング調整（変更は自動保存されます）
         </Typography>
         
         <Grid container spacing={2}>
@@ -432,16 +452,6 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
             />
           </Grid>
         </Grid>
-
-        <Button 
-          variant="contained" 
-          color="primary"
-          onClick={handleApplySettings}
-          sx={{ mt: 3 }}
-          fullWidth
-        >
-          設定を適用
-        </Button>
       </Paper>
     </Box>
   );
