@@ -115,26 +115,30 @@ const OutputGenerator = () => {
     return style;
   };
 
-  // 画像レイアウトの計算
-  const getLayoutStyle = () => {
+  
+
+  // 画像レイアウトの計算を修正
+const getLayoutStyle = () => {
     const { width } = calculateOutputSize();
     const scale = 0.5; // プレビューのサイズを調整
     const containerWidth = width * scale;
     const columns = layoutSettings.columns;
-    const itemWidth = (containerWidth / columns) - 10; // 余白を考慮
+    
+    // 隙間を考慮しない画像幅の計算
+    const itemWidth = containerWidth / columns;
     
     // アスペクト比から高さを計算
     const aspectRatio = trimSettings.width / trimSettings.height;
     const itemHeight = itemWidth / aspectRatio;
     
-    const spacing = calculateSpacing(itemHeight) * scale;
+    // 間隔を計算するが、プレビューのみに適用（実際の出力には影響させない）
+    const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(itemHeight) * scale;
     
     return {
       containerStyle: getContainerStyle(),
       itemStyle: {
         width: `${itemWidth}mm`,
         height: `${itemHeight}mm`,
-        margin: `${spacing}mm`,
         background: '#f0f0f0',
         border: '1px solid #ddd',
         display: 'flex',
@@ -143,21 +147,29 @@ const OutputGenerator = () => {
         overflow: 'hidden'
       },
       imageStyle: {
-        maxWidth: '100%',
-        maxHeight: '100%',
+        width: '100%',
+        height: '100%',
         objectFit: 'contain'
-      }
+      },
+      spacing: spacing
     };
   };
 
-  // レイアウト配置方法の決定
-  const arrangeItems = () => {
+  // レイアウト配置方法の決定を修正
+const arrangeItems = () => {
     if (images.length === 0 || !trimSettings.applied) {
       return null;
     }
     
     const layout = getLayoutStyle();
     const direction = layoutSettings.direction;
+    
+    // 画像間の余白をなくす
+    const noSpacingStyle = {
+      ...layout.itemStyle,
+      margin: '0',  // 余白をゼロに
+      boxSizing: 'border-box'
+    };
     
     return (
       <Box 
@@ -169,10 +181,11 @@ const OutputGenerator = () => {
           flexDirection: direction === 'vertical' ? 'column' : 'row',
           alignContent: 'flex-start',
           alignItems: 'flex-start',
+          gap: calculateSpacing(1) + 'px',  // 必要な場合のみ間隔を追加
         }}
       >
         {previewImages.map((img, index) => (
-          <Box key={index} style={layout.itemStyle}>
+          <Box key={index} style={noSpacingStyle}>
             <img src={img} alt={`画像 ${index + 1}`} style={layout.imageStyle} />
           </Box>
         ))}
@@ -180,8 +193,8 @@ const OutputGenerator = () => {
     );
   };
 
-  // PDFファイルの生成
-  const generatePDF = async () => {
+  // PDFファイルの生成を複数ページに対応させる
+const generatePDF = async () => {
     setIsGenerating(true);
     setError(null);
     
@@ -196,25 +209,21 @@ const OutputGenerator = () => {
         format: layoutSettings.outputSize === 'custom' ? [width, height] : layoutSettings.outputSize
       });
       
-      // HTMLをPDFに変換
-      if (outputContainerRef.current) {
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const scale = 2; // より高品質にするため
-        
-        // HTMLを画像に変換
-        const dataUrl = await toPng(outputContainerRef.current, { 
-          pixelRatio: scale,
-          backgroundColor: '#ffffff'
-        });
-        
-        // 無限長の場合は、PDF用にページサイズを再計算
-        if (layoutSettings.outputSize === 'infinite') {
+      // 無限長の場合は単一ページで出力
+      if (layoutSettings.outputSize === 'infinite') {
+        if (outputContainerRef.current) {
+          const dataUrl = await toPng(outputContainerRef.current, { 
+            pixelRatio: 2,
+            backgroundColor: '#ffffff'
+          });
+          
           const img = new Image();
           await new Promise(resolve => {
             img.onload = resolve;
             img.src = dataUrl;
           });
           
+          const pdfWidth = pdf.internal.pageSize.getWidth();
           const aspect = img.height / img.width;
           const pdfHeight = pdfWidth * aspect;
           
@@ -222,22 +231,62 @@ const OutputGenerator = () => {
           pdf.addPage([pdfWidth, pdfHeight], orientation);
           pdf.setPage(2);
           pdf.deletePage(1);
+          
+          // 画像をPDFに追加
+          pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
         }
+      } 
+      // 固定サイズの場合は複数ページに分割
+      else {
+        // トリミングされた画像のレイアウト計算
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const pdfHeight = pdf.internal.pageSize.getHeight();
+        const pageArea = pdfWidth * pdfHeight;
         
-        // 画像をPDFに追加
-        pdf.addImage(
-          dataUrl, 
-          'PNG', 
-          0, 0, 
-          pdfWidth, 
-          layoutSettings.outputSize === 'infinite' 
-            ? pdf.internal.pageSize.getHeight()
-            : pdf.internal.pageSize.getHeight()
-        );
+        // 各画像のデータを準備
+        const imageItems = await Promise.all(previewImages.map(async (imgSrc) => {
+          const img = new Image();
+          await new Promise(resolve => {
+            img.onload = resolve;
+            img.src = imgSrc;
+          });
+          
+          // アスペクト比を維持したサイズ計算
+          const imgWidth = pdfWidth / layoutSettings.columns;
+          const imgHeight = imgWidth * (img.height / img.width);
+          
+          return { img: imgSrc, width: imgWidth, height: imgHeight };
+        }));
         
-        // ダウンロード
-        pdf.save('楽譜レイアウト.pdf');
+        // 画像を配置するためのグリッドを計算
+        const imgsPerPage = Math.floor(pageArea / (imageItems[0].width * imageItems[0].height));
+        const totalPages = Math.ceil(imageItems.length / imgsPerPage);
+        
+        // 各ページに画像を配置
+        for (let page = 0; page < totalPages; page++) {
+          if (page > 0) {
+            pdf.addPage(layoutSettings.outputSize, orientation);
+          }
+          
+          const startIdx = page * imgsPerPage;
+          const endIdx = Math.min(startIdx + imgsPerPage, imageItems.length);
+          
+          // 現在のページの画像を配置
+          for (let i = startIdx; i < endIdx; i++) {
+            const item = imageItems[i];
+            const col = (i - startIdx) % layoutSettings.columns;
+            const row = Math.floor((i - startIdx) / layoutSettings.columns);
+            
+            const x = col * item.width;
+            const y = row * item.height;
+            
+            pdf.addImage(item.img, 'PNG', x, y, item.width, item.height);
+          }
+        }
       }
+      
+      // ダウンロード
+      pdf.save('楽譜レイアウト.pdf');
     } catch (err) {
       console.error('PDF生成エラー:', err);
       setError('PDFの生成中にエラーが発生しました。');

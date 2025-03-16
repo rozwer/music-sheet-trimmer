@@ -29,21 +29,24 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     }
   }, [image, trimSettings]);
 
-  // キャンバスでの描画処理
-  const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
+  // renderCanvas関数内を修正
+const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
     if (!canvasRef.current || !img) return;
     
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
-    const { width, height } = originalDimensions;
     
-    // キャンバスサイズの設定
+    // トリミング後のサイズをキャンバスサイズとして使用
+    const effectiveWidth = trimSettings.width - leftTrim - rightTrim;
+    const effectiveHeight = trimSettings.height;
+    
+    // キャンバスサイズの設定（トリミング後のサイズに合わせる）
     if (rotation === 90 || rotation === 270) {
-      canvas.width = height;
-      canvas.height = width;
+      canvas.width = effectiveHeight;
+      canvas.height = effectiveWidth;
     } else {
-      canvas.width = width;
-      canvas.height = height;
+      canvas.width = effectiveWidth;
+      canvas.height = effectiveHeight;
     }
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -53,19 +56,17 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     
-    const effectiveWidth = width - leftTrim - rightTrim;
-    
-    // 1枚目で設定された高さと位置に基づいてトリミング
+    // 1枚目で設定された範囲でトリミング（左右のトリミングを考慮）
     ctx.drawImage(
       img,
-      leftTrim,
+      trimSettings.x + leftTrim,
       trimSettings.yPosition + yOffset,
       effectiveWidth,
-      trimSettings.height,
+      effectiveHeight,
       -effectiveWidth / 2,
-      -trimSettings.height / 2,
+      -effectiveHeight / 2,
       effectiveWidth,
-      trimSettings.height
+      effectiveHeight
     );
     
     ctx.restore();
