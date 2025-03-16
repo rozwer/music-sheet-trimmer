@@ -135,6 +135,7 @@ useEffect(() => {
   const getContainerStyle = () => {
     const { width, height } = calculateOutputSize();
     const scale = 0.5; // プレビューのサイズを調整
+    const direction = layoutSettings.direction;
     
     let style = {
       width: `${width * scale}mm`,
@@ -145,11 +146,11 @@ useEffect(() => {
       padding: '10px',
     };
     
+    // 無限サイズでない場合は高さも設定
     if (layoutSettings.outputSize !== 'infinite') {
       style = {
         ...style,
         height: `${height * scale}mm`,
-        overflowY: 'hidden'
       };
     }
     
@@ -163,16 +164,16 @@ const getLayoutStyle = () => {
     const { width } = calculateOutputSize();
     const scale = 0.5; // プレビューのサイズを調整
     const containerWidth = width * scale;
-    const columns = layoutSettings.columns;
+    const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
     
-    // 隙間を考慮しない画像幅の計算
+    // 列あたりの幅を計算
     const itemWidth = containerWidth / columns;
     
-    // アスペクト比から高さを計算
+    // アスペクト比から最大の高さを計算（これは枠のサイズとなり、実際の画像はこのサイズを超えない）
     const aspectRatio = trimSettings.width / trimSettings.height;
     const itemHeight = itemWidth / aspectRatio;
     
-    // 間隔を計算するが、プレビューのみに適用（実際の出力には影響させない）
+    // 間隔を計算
     const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(itemHeight) * scale;
     
     return {
@@ -188,9 +189,11 @@ const getLayoutStyle = () => {
         overflow: 'hidden'
       },
       imageStyle: {
-        width: '100%',
-        height: '100%',
-        objectFit: 'contain'
+        maxWidth: '100%',
+        maxHeight: '100%',
+        objectFit: 'contain',
+        width: 'auto', // 横幅を自動調整
+        height: 'auto' // 高さを自動調整
       },
       spacing: spacing
     };
@@ -204,6 +207,8 @@ const arrangeItems = () => {
     
     const layout = getLayoutStyle();
     const direction = layoutSettings.direction;
+    const isVertical = direction === 'vertical';
+    const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
     
     // 画像間の余白をなくす
     const noSpacingStyle = {
@@ -218,18 +223,50 @@ const arrangeItems = () => {
         style={layout.containerStyle} 
         sx={{ 
           display: 'flex', 
-          flexWrap: 'wrap',
-          flexDirection: direction === 'vertical' ? 'column' : 'row',
+          flexWrap: isVertical ? 'nowrap' : 'wrap',
+          flexDirection: isVertical ? 'column' : 'row',
           alignContent: 'flex-start',
           alignItems: 'flex-start',
           gap: calculateSpacing(1) + 'px',  // 必要な場合のみ間隔を追加
         }}
       >
-        {previewImages.map((img, index) => (
-          <Box key={index} style={noSpacingStyle}>
-            <img src={img} alt={`画像 ${index + 1}`} style={layout.imageStyle} />
-          </Box>
-        ))}
+        {isVertical ? 
+          // 縦方向レイアウト（列ごとに並べる）
+          Array.from({length: columns}, (_, colIndex) => (
+            <Box 
+              key={`col-${colIndex}`} 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                gap: calculateSpacing(1) + 'px',
+              }}
+            >
+              {previewImages
+                .filter((_, imgIndex) => imgIndex % columns === colIndex)
+                .map((img, index) => (
+                  <Box key={`img-${colIndex}-${index}`} style={noSpacingStyle} className="image-container">
+                    <img 
+                      src={img} 
+                      alt={`画像 ${colIndex * Math.ceil(previewImages.length / columns) + index + 1}`} 
+                      style={layout.imageStyle} 
+                    />
+                  </Box>
+                ))
+              }
+            </Box>
+          ))
+          :
+          // 横方向レイアウト（普通に横に並べる）
+          previewImages.map((img, index) => (
+            <Box key={index} style={noSpacingStyle} className="image-container">
+              <img 
+                src={img} 
+                alt={`画像 ${index + 1}`} 
+                style={layout.imageStyle} 
+              />
+            </Box>
+          ))
+        }
       </Box>
     );
   };
@@ -279,88 +316,160 @@ const generatePDF = async () => {
     } 
     // 固定サイズの場合は複数ページに対応
     else {
-      // トリミングされた画像のレイアウト計算
+      // PDFのページサイズを取得
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
       
-      // 各画像のデータを準備
-      const imageItems = await Promise.all(previewImages.map(async (imgSrc, index) => {
+      // 目標アスペクト比を計算（トリミング設定から）
+      const targetAspectRatio = trimSettings.width / trimSettings.height;
+      
+      // 各画像のデータを準備し、必要に応じて横に空白を追加
+      const imageItems = await Promise.all(previewImages.map(async (imgSrc) => {
         const img = new Image();
         await new Promise(resolve => {
           img.onload = resolve;
           img.src = imgSrc;
         });
         
-        // 縦幅は統一（trimSettings.height）するが、横幅は元のアスペクト比から計算
-        // 拡大はせず、元の比率を保持
-        const imgHeight = trimSettings.height / 10; // mmに変換する係数（1/10）
-        const imgWidth = (img.width / img.height) * imgHeight;
+        // 画像の実際のアスペクト比を計算
+        const actualAspectRatio = img.width / img.height;
         
-        return { 
-          img: imgSrc, 
-          width: imgWidth, 
-          height: imgHeight,
-          originalWidth: img.width,
-          originalHeight: img.height
-        };
+        // アスペクト比を比較して、必要に応じて横に空白を追加
+        if (Math.abs(actualAspectRatio - targetAspectRatio) < 0.01) {
+          // アスペクト比がほぼ同じ場合は変更なし
+          return { 
+            src: imgSrc,
+            aspectRatio: actualAspectRatio,
+            needsPadding: false
+          };
+        } else if (actualAspectRatio < targetAspectRatio) {
+          // 画像が縦長すぎる場合、横に空白を追加
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // 元の高さを保持し、目標アスペクト比に合わせた幅を計算
+          const canvasHeight = img.height;
+          const canvasWidth = canvasHeight * targetAspectRatio;
+          
+          // キャンバスサイズを設定
+          canvas.width = canvasWidth;
+          canvas.height = canvasHeight;
+          
+          // 背景を白で塗りつぶす
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+          
+          // 画像を中央に配置
+          const xOffset = (canvasWidth - img.width) / 2;
+          ctx.drawImage(img, xOffset, 0, img.width, img.height);
+          
+          // 新しい画像をデータURLとして取得
+          const paddedImageSrc = canvas.toDataURL('image/jpeg', 0.95);
+          
+          return { 
+            src: paddedImageSrc,
+            aspectRatio: targetAspectRatio,
+            needsPadding: true
+          };
+        } else {
+          // 画像が横長すぎる場合（これは既にトリミングで処理されているはずなので、念のため）
+          return { 
+            src: imgSrc,
+            aspectRatio: actualAspectRatio,
+            needsPadding: false
+          };
+        }
       }));
       
       // レイアウト計算
-      const columns = layoutSettings.columns;
-      const spacing = calculateSpacing(imageItems[0].height) / 10; // mmに変換
+      const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
+      const isVertical = layoutSettings.direction === 'vertical';
+      const margin = 10; // ページ余白（mm）
       
-      // ページ内の配置座標を計算
-      const positions = [];
-      let currentX = 0;
-      let currentY = 0;
-      let maxHeightInRow = 0;
-      let colIndex = 0;
+      // 列の幅を計算（余白を考慮）
+      const usableWidth = pdfWidth - (margin * 2);
+      const columnWidth = usableWidth / columns;
       
-      imageItems.forEach((item, index) => {
-        // 新しい行の開始
-        if (colIndex >= columns) {
-          colIndex = 0;
-          currentX = 0;
-          currentY += maxHeightInRow + spacing;
-          maxHeightInRow = 0;
-        }
-        
-        // 現在の位置を保存
-        positions.push({
-          x: currentX,
-          y: currentY,
-          width: item.width,
-          height: item.height,
-          image: item.img
-        });
-        
-        // 次の画像の位置を計算
-        currentX += item.width + spacing;
-        colIndex++;
-        maxHeightInRow = Math.max(maxHeightInRow, item.height);
-        
-        // ページ境界をチェック：次の行が新しいページになるかどうか
-        if (currentY + maxHeightInRow > pdfHeight && index < imageItems.length - 1) {
-          // 新しいページが必要
+      // 最大サイズを設定
+      const maxWidth = columnWidth;
+      const maxHeight = maxWidth / targetAspectRatio;
+      
+      // 間隔を計算
+      const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(maxHeight);
+      
+      // 1ページに配置可能な行数を計算
+      const usableHeight = pdfHeight - (margin * 2);
+      const rowsPerPage = Math.floor(usableHeight / (maxHeight + spacing));
+      const imagesPerPage = rowsPerPage * columns;
+      
+      // 必要なページ数を計算
+      const totalPages = Math.ceil(imageItems.length / imagesPerPage);
+      
+      // 各ページに画像を配置
+      for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
+        // 2ページ目以降は新しいページを追加
+        if (pageIndex > 0) {
           pdf.addPage();
-          currentX = 0;
-          currentY = 0;
-          colIndex = 0;
-          maxHeightInRow = 0;
         }
-      });
-      
-      // 画像をPDFに配置
-      positions.forEach(pos => {
-        pdf.addImage(
-          pos.image, 
-          'JPEG', 
-          pos.x, 
-          pos.y, 
-          pos.width, 
-          pos.height
-        );
-      });
+        
+        // このページに配置する画像のインデックス範囲
+        const startIndex = pageIndex * imagesPerPage;
+        const endIndex = Math.min((pageIndex + 1) * imagesPerPage, imageItems.length);
+        
+        // このページに配置する画像
+        const pageImages = imageItems.slice(startIndex, endIndex);
+        
+        // 画像を配置
+        if (isVertical) {
+          // 縦方向レイアウト - 縦方向の配置処理を実装
+          for (let col = 0; col < columns; col++) {
+            const colImages = [];
+            // この列に配置する画像を抽出
+            for (let i = col; i < pageImages.length; i += columns) {
+              colImages.push(pageImages[i]);
+            }
+            
+            // 列の画像を上から下へ配置
+            for (let row = 0; row < colImages.length; row++) {
+              const image = colImages[row];
+              const x = margin + col * columnWidth;
+              const y = margin + row * (maxHeight + spacing);
+              
+              // 画像を追加（アスペクト比を維持）
+              pdf.addImage(
+                image.src,
+                'JPEG',
+                x,
+                y,
+                maxWidth,
+                maxHeight
+              );
+            }
+          }
+        } else {
+          // 横方向レイアウト
+          for (let row = 0; row < rowsPerPage; row++) {
+            for (let col = 0; col < columns && row * columns + col < pageImages.length; col++) {
+              const imageIndex = row * columns + col;
+              if (imageIndex < pageImages.length) {
+                const image = pageImages[imageIndex];
+                const x = margin + col * columnWidth;
+                const y = margin + row * (maxHeight + spacing);
+                
+                // 画像を追加（アスペクト比を維持）
+                pdf.addImage(
+                  image.src,
+                  'JPEG',
+                  x,
+                  y,
+                  maxWidth,  // 列幅いっぱいに広げる
+                  maxHeight  // 高さは計算済みの値
+                );
+              }
+            }
+          }
+        }
+      }
     }
     
     // ダウンロード
@@ -498,7 +607,15 @@ const generatePDF = async () => {
               最終プレビュー
             </Typography>
             
-            <Box sx={{ mt: 2, overflow: 'auto', maxHeight: '500px' }}>
+            <Box sx={{ 
+              mt: 2, 
+              overflow: 'auto', 
+              maxHeight: '700px', // 高さを拡大
+              border: '1px solid #eee',
+              // レイアウト方向に応じたスクロール方向を設定
+              overflowX: layoutSettings.direction === 'vertical' ? 'auto' : 'hidden',
+              overflowY: 'auto'
+            }}>
               {arrangeItems()}
             </Box>
           </Paper>
