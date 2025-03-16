@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
-import { Box, Typography, Button, Paper, IconButton, Grid } from '@mui/material';
+import { Box, Typography, Button, Slider, Paper, IconButton, Grid } from '@mui/material';
 import RotateLeftIcon from '@mui/icons-material/RotateLeft';
 import RotateRightIcon from '@mui/icons-material/RotateRight';
 
@@ -29,16 +29,26 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
         renderCanvas(img, rotation, yOffset, leftTrim, rightTrim);
         
         // ハイライト表示を初期化
-        if (highlightRef.current && imageContainerRef.current) {
-          const containerHeight = imageContainerRef.current.offsetHeight;
-          const highlightHeight = (trimSettings.height / img.height) * containerHeight;
-          highlightRef.current.style.height = `${highlightHeight}px`;
-          highlightRef.current.style.top = `${(trimSettings.yPosition / img.height) * containerHeight + yOffset}px`;
-        }
+        updateHighlightPosition(yOffset);
       };
       img.src = image.preview;
     }
   }, [image, trimSettings]);
+
+  // ハイライト位置の更新
+  const updateHighlightPosition = (offset) => {
+    if (highlightRef.current && imageContainerRef.current && imageObj) {
+      const containerHeight = imageContainerRef.current.offsetHeight;
+      const scale = containerHeight / imageObj.height;
+      
+      const highlightHeight = trimSettings.height * scale;
+      highlightRef.current.style.height = `${highlightHeight}px`;
+      
+      // Y位置の計算（トリミング設定の位置 + オフセット）
+      const topPosition = (trimSettings.yPosition + offset) * scale;
+      highlightRef.current.style.top = `${topPosition}px`;
+    }
+  };
 
   // キャンバスでの描画処理
   const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
@@ -51,7 +61,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     const effectiveWidth = trimSettings.width - leftTrim - rightTrim;
     const effectiveHeight = trimSettings.height;
     
-    // キャンバスサイズの設定（トリミング後のサイズに合わせる）
+    // キャンバスサイズの設定
     if (rotation === 90 || rotation === 270) {
       canvas.width = effectiveHeight;
       canvas.height = effectiveWidth;
@@ -67,7 +77,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     ctx.translate(canvas.width / 2, canvas.height / 2);
     ctx.rotate((rotation * Math.PI) / 180);
     
-    // 1枚目で設定された範囲でトリミング（左右のトリミングとYオフセットを考慮）
+    // 1枚目で設定された範囲でトリミング
     ctx.drawImage(
       img,
       trimSettings.x + leftTrim,
@@ -84,104 +94,141 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   };
 
   // 画像の回転処理
-  const handleRotate = async (degrees) => {
+  const handleRotate = (degrees) => {
     const newRotation = (rotation + degrees) % 360;
     setRotation(newRotation);
-    
-    // 画像設定の更新
-    const updatedImages = [...images];
-    updatedImages[imageIndex] = {
-      ...updatedImages[imageIndex],
-      settings: {
-        ...updatedImages[imageIndex].settings,
-        rotation: newRotation
-      }
-    };
-    setImages(updatedImages);
     
     if (imageObj) {
       renderCanvas(imageObj, newRotation, yOffset, leftTrim, rightTrim);
     }
   };
 
-  // ドラッグ開始処理
-  const handleDragStart = (e) => {
+  // Y軸オフセット（縦位置）の調整 - スライダー用
+  const handleYOffsetChange = (event, newValue) => {
+    setYOffset(newValue);
+    updateHighlightPosition(newValue);
+    
+    if (imageObj) {
+      renderCanvas(imageObj, rotation, newValue, leftTrim, rightTrim);
+    }
+  };
+
+  // 左右トリミングの調整
+  const handleLeftTrimChange = (event, newValue) => {
+    setLeftTrim(newValue);
+    if (imageObj) {
+      renderCanvas(imageObj, rotation, yOffset, newValue, rightTrim);
+    }
+  };
+
+  const handleRightTrimChange = (event, newValue) => {
+    setRightTrim(newValue);
+    if (imageObj) {
+      renderCanvas(imageObj, rotation, yOffset, leftTrim, newValue);
+    }
+  };
+
+  // マウスドラッグ開始
+  const handleMouseDown = (e) => {
     e.preventDefault();
     setIsDragging(true);
     setDragStartY(e.clientY);
   };
 
-  // ドラッグ中の処理
-  const handleDrag = (e) => {
-    if (!isDragging || !imageContainerRef.current || !highlightRef.current) return;
-    
+  // タッチドラッグ開始
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      setDragStartY(e.touches[0].clientY);
+    }
+  };
+
+  // マウスドラッグ中
+  const handleMouseMove = (e) => {
+    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj) return;
+    processDragMove(e.clientY);
+  };
+
+  // タッチドラッグ中
+  const handleTouchMove = (e) => {
+    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj || !e.touches[0]) return;
+    processDragMove(e.touches[0].clientY);
+  };
+
+  // ドラッグ移動の共通処理
+  const processDragMove = (clientY) => {
     const containerRect = imageContainerRef.current.getBoundingClientRect();
     const highlightRect = highlightRef.current.getBoundingClientRect();
-    const containerHeight = containerRect.height;
     
-    // 移動距離の計算（スクリーン座標）
-    const deltaY = e.clientY - dragStartY;
-    setDragStartY(e.clientY);
+    // 移動距離の計算
+    const deltaY = clientY - dragStartY;
+    setDragStartY(clientY);
     
-    // 現在の位置を取得（トップ位置をピクセルから比率に変換）
+    // 現在の位置を取得
     const currentTopPixel = parseFloat(highlightRef.current.style.top || '0px');
-    const currentTop = currentTopPixel;
     
     // 新しい位置を計算（境界チェック付き）
-    let newTopPixel = currentTop + deltaY;
-    
-    // 画像の境界をチェック
-    const maxTop = containerHeight - highlightRect.height;
+    let newTopPixel = currentTopPixel + deltaY;
+    const maxTop = containerRect.height - highlightRect.height;
     newTopPixel = Math.max(0, Math.min(newTopPixel, maxTop));
     
     // ハイライトの位置を更新
     highlightRef.current.style.top = `${newTopPixel}px`;
     
-    // 画像の実サイズに基づいてyOffsetを計算
-    const newYOffset = (newTopPixel / containerHeight) * originalDimensions.height - trimSettings.yPosition;
-    setYOffset(newYOffset);
+    // 元の画像サイズに基づいてYオフセットを計算
+    const scale = containerRect.height / imageObj.height;
+    const newYOffset = (newTopPixel / scale) - trimSettings.yPosition;
     
-    // キャンバスの更新
-    if (imageObj) {
-      renderCanvas(imageObj, rotation, newYOffset, leftTrim, rightTrim);
-    }
+    // 状態とキャンバスを更新
+    setYOffset(newYOffset);
+    renderCanvas(imageObj, rotation, newYOffset, leftTrim, rightTrim);
   };
 
-  // ドラッグ終了処理
+  // ドラッグ終了
   const handleDragEnd = () => {
     setIsDragging(false);
   };
 
-  // マウスイベントの追加
+  // イベントリスナーの設定
   useEffect(() => {
     if (isDragging) {
-      window.addEventListener('mousemove', handleDrag);
+      window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleDragEnd);
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      window.addEventListener('touchend', handleDragEnd);
+      window.addEventListener('touchcancel', handleDragEnd);
     } else {
-      window.removeEventListener('mousemove', handleDrag);
+      window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleDragEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleDragEnd);
+      window.removeEventListener('touchcancel', handleDragEnd);
     }
     
     return () => {
-      window.removeEventListener('mousemove', handleDrag);
+      window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleDragEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleDragEnd);
+      window.removeEventListener('touchcancel', handleDragEnd);
     };
   }, [isDragging]);
 
-  // 左右トリミングの処理（そのまま残す）
-  const handleLeftTrimChange = (value) => {
-    setLeftTrim(value);
-    if (imageObj) {
-      renderCanvas(imageObj, rotation, yOffset, value, rightTrim);
-    }
-  };
+  // タッチイベントでのスクロール防止
+  useEffect(() => {
+    const preventDefaultTouch = (e) => {
+      if (isDragging) {
+        e.preventDefault();
+      }
+    };
 
-  const handleRightTrimChange = (value) => {
-    setRightTrim(value);
-    if (imageObj) {
-      renderCanvas(imageObj, rotation, yOffset, leftTrim, value);
-    }
-  };
+    // タッチイベントでのスクロール防止設定
+    document.addEventListener('touchmove', preventDefaultTouch, { passive: false });
+    
+    return () => {
+      document.removeEventListener('touchmove', preventDefaultTouch);
+    };
+  }, [isDragging]);
 
   // 設定を確定して画像データを更新
   const handleApplySettings = () => {
@@ -215,6 +262,10 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     );
   }
 
+  // 最大オフセット値の計算
+  const maxYOffset = imageObj ? imageObj.height - trimSettings.height - trimSettings.yPosition : 100;
+  const minYOffset = -trimSettings.yPosition;
+
   return (
     <Box>
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -231,7 +282,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
               ref={imageContainerRef}
               sx={{ 
                 position: 'relative', 
-                height: '400px',
+                height: '350px',
                 border: '1px solid #ddd',
                 overflow: 'hidden',
                 mb: 2,
@@ -257,9 +308,11 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
                   border: '2px dashed #0077ff',
                   cursor: 'move',
                   zIndex: 10,
-                  boxSizing: 'border-box'
+                  boxSizing: 'border-box',
+                  touchAction: 'none' // タッチ操作時の挙動制御
                 }}
-                onMouseDown={handleDragStart}
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
               />
             </Box>
           </Grid>
@@ -273,7 +326,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
                 ref={canvasRef} 
                 style={{ 
                   maxWidth: '100%', 
-                  maxHeight: '400px',
+                  maxHeight: '350px',
                   border: '1px solid #ddd'
                 }}
               />
@@ -281,7 +334,22 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
           </Grid>
         </Grid>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
+        <Box sx={{ mt: 3 }}>
+          <Typography id="y-offset-slider" gutterBottom>
+            縦位置調整（スライダー）
+          </Typography>
+          <Slider
+            aria-labelledby="y-offset-slider"
+            value={yOffset}
+            onChange={handleYOffsetChange}
+            min={minYOffset}
+            max={maxYOffset}
+            step={1}
+            valueLabelDisplay="auto"
+          />
+        </Box>
+
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, mt: 3 }}>
           <Typography id="rotation-label" sx={{ mr: 2 }}>回転:</Typography>
           <IconButton onClick={() => handleRotate(-90)} color="primary" size="small">
             <RotateLeftIcon />
@@ -292,11 +360,43 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
           </IconButton>
         </Box>
 
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} sm={6}>
+            <Typography id="left-trim-slider" gutterBottom>
+              左端トリミング
+            </Typography>
+            <Slider
+              aria-labelledby="left-trim-slider"
+              value={leftTrim}
+              onChange={handleLeftTrimChange}
+              min={0}
+              max={originalDimensions.width / 4}
+              step={1}
+              valueLabelDisplay="auto"
+            />
+          </Grid>
+
+          <Grid item xs={12} sm={6}>
+            <Typography id="right-trim-slider" gutterBottom>
+              右端トリミング
+            </Typography>
+            <Slider
+              aria-labelledby="right-trim-slider"
+              value={rightTrim}
+              onChange={handleRightTrimChange}
+              min={0}
+              max={originalDimensions.width / 4}
+              step={1}
+              valueLabelDisplay="auto"
+            />
+          </Grid>
+        </Grid>
+
         <Button 
           variant="contained" 
           color="primary"
           onClick={handleApplySettings}
-          sx={{ mt: 2 }}
+          sx={{ mt: 3 }}
           fullWidth
         >
           設定を適用
