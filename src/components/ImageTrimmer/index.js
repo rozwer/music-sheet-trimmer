@@ -12,7 +12,8 @@ import {
   CardMedia, 
   CardActions, 
   CardContent,
-  Tooltip
+  Tooltip,
+  Divider
 } from '@mui/material';
 import FirstImageTrimmer from './FirstImageTrimmer';
 import SubsequentImageTrimmer from './SubsequentImageTrimmer';
@@ -88,11 +89,49 @@ const ImageTrimmer = () => {
           '自動適用されたトリミングを必要に応じて調整できます。'}
       </Typography>
 
-      {/* タブの代わりに並べ替え可能なカードビュー */}
-      <Paper sx={{ width: '100%', mb: 3, p: 2 }}>
+      {/* 元のタブインターフェースを保持 */}
+      <Paper sx={{ width: '100%', mb: 2 }}>
+        <Tabs
+          value={currentImageIndex}
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          aria-label="画像タブ"
+        >
+          {images.map((image, index) => (
+            <Tab 
+              key={index} 
+              label={`画像 ${index + 1}`} 
+              id={`image-tab-${index}`}
+              aria-controls={`image-tabpanel-${index}`}
+            />
+          ))}
+        </Tabs>
+      </Paper>
+
+      {/* 選択中の画像のトリミングエリア */}
+      <Box role="tabpanel" sx={{ mb: 4 }}>
+        {currentImageIndex === 0 ? (
+          <FirstImageTrimmer 
+            image={images[0]} 
+            imageIndex={0} 
+          />
+        ) : (
+          <SubsequentImageTrimmer 
+            image={images[currentImageIndex]} 
+            imageIndex={currentImageIndex}
+            trimSettings={trimSettings}
+          />
+        )}
+      </Box>
+
+      {/* 並べ替えセクションを最下部に追加 */}
+      <Divider sx={{ my: 4 }} />
+      
+      <Paper sx={{ width: '100%', p: 2, mt: 2 }}>
         <Typography variant="subtitle1" sx={{ mb: 2, display: 'flex', alignItems: 'center' }}>
           <SwapVertIcon sx={{ mr: 1 }} />
-          画像の順序変更とプレビュー
+          画像の順序変更
         </Typography>
         
         <Grid container spacing={2}>
@@ -153,28 +192,6 @@ const ImageTrimmer = () => {
           ))}
         </Grid>
       </Paper>
-
-      {/* 現在選択されている画像を表示 */}
-      <Box sx={{ mt: 2 }}>
-        <Paper sx={{ mb: 2, p: 2 }}>
-          <Typography variant="subtitle1">
-            現在選択中: 画像 {currentImageIndex + 1} / {images.length}
-          </Typography>
-        </Paper>
-        
-        {currentImageIndex === 0 ? (
-          <FirstImageTrimmer 
-            image={images[0]} 
-            imageIndex={0} 
-          />
-        ) : (
-          <SubsequentImageTrimmer 
-            image={images[currentImageIndex]} 
-            imageIndex={currentImageIndex}
-            trimSettings={trimSettings}
-          />
-        )}
-      </Box>
     </Box>
   );
 };
