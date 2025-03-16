@@ -1,18 +1,18 @@
 {
   "files": {
     "main.css": "/music-sheet-trimmer/static/css/main.d031cf7d.css",
-    "main.js": "/music-sheet-trimmer/static/js/main.63a7cae0.js",
+    "main.js": "/music-sheet-trimmer/static/js/main.eb54101e.js",
     "static/js/239.e7442587.chunk.js": "/music-sheet-trimmer/static/js/239.e7442587.chunk.js",
     "static/js/977.8311e5d3.chunk.js": "/music-sheet-trimmer/static/js/977.8311e5d3.chunk.js",
     "static/js/732.62839af5.chunk.js": "/music-sheet-trimmer/static/js/732.62839af5.chunk.js",
     "index.html": "/music-sheet-trimmer/index.html",
     "main.d031cf7d.css.map": "/music-sheet-trimmer/static/css/main.d031cf7d.css.map",
-    "main.63a7cae0.js.map": "/music-sheet-trimmer/static/js/main.63a7cae0.js.map",
+    "main.eb54101e.js.map": "/music-sheet-trimmer/static/js/main.eb54101e.js.map",
     "239.e7442587.chunk.js.map": "/music-sheet-trimmer/static/js/239.e7442587.chunk.js.map",
     "732.62839af5.chunk.js.map": "/music-sheet-trimmer/static/js/732.62839af5.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.d031cf7d.css",
-    "static/js/main.63a7cae0.js"
+    "static/js/main.eb54101e.js"
   ]
 }
