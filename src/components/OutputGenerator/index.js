@@ -28,16 +28,57 @@ const OutputGenerator = () => {
   const [previewImages, setPreviewImages] = useState([]);
   const outputContainerRef = useRef(null);
   
-  // プレビュー用の画像配列を生成 - Hookはトップレベルに配置
-  useEffect(() => {
-    if (images.length > 0) {
-      // トリミングされた画像または元のプレビューを取得
-      const processedImages = images.map(img => 
-        img.trimmedPreview || img.preview
-      );
-      setPreviewImages(processedImages);
+  // プレビュー用の画像配列を生成部分を修正
+useEffect(() => {
+    if (images.length > 0 && trimSettings.applied) {
+      // 各画像のトリミング適用済みバージョンを生成
+      const createTrimmingPreview = async () => {
+        const processed = await Promise.all(images.map(async (img, index) => {
+          // すでにトリミング済みの場合はそれを使用
+          if (img.trimmedPreview) {
+            return img.trimmedPreview;
+          }
+          
+          // トリミング処理を適用
+          try {
+            const imgElement = new Image();
+            await new Promise((resolve) => {
+              imgElement.onload = resolve;
+              imgElement.src = img.preview;
+            });
+            
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // トリミングサイズを設定
+            canvas.width = trimSettings.width;
+            canvas.height = trimSettings.height;
+            
+            // トリミング位置とサイズで画像を描画
+            ctx.drawImage(
+              imgElement,
+              trimSettings.x, // X座標
+              trimSettings.yPosition, // Y座標
+              trimSettings.width, // 幅
+              trimSettings.height, // 高さ
+              0, 0, // キャンバス上の配置位置
+              trimSettings.width,
+              trimSettings.height
+            );
+            
+            return canvas.toDataURL('image/jpeg');
+          } catch (err) {
+            console.error('画像トリミングエラー:', err);
+            return img.preview; // エラーの場合は元の画像を使用
+          }
+        }));
+        
+        setPreviewImages(processed);
+      };
+      
+      createTrimmingPreview();
     }
-  }, [images]);
+  }, [images, trimSettings]);
 
   // 出力形式の変更ハンドラ
   const handleFormatChange = (event) => {
@@ -194,7 +235,7 @@ const arrangeItems = () => {
   };
 
   // PDFファイルの生成を複数ページに対応させる
-const generatePDF = async () => {
+  const generatePDF = async () => {
     setIsGenerating(true);
     setError(null);
     

@@ -117,15 +117,16 @@ const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
     }
   };
 
-  // 設定を確定して画像データを更新
   const handleApplySettings = () => {
     if (!canvasRef.current) return;
     
     const canvas = canvasRef.current;
+    const dataUrl = canvas.toDataURL();
+    
     const updatedImages = [...images];
     updatedImages[imageIndex] = {
       ...updatedImages[imageIndex],
-      trimmedPreview: canvas.toDataURL(),
+      trimmedPreview: dataUrl,  // ここでトリミングした画像を保存
       settings: {
         rotation,
         yOffset,
