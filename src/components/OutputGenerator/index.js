@@ -234,107 +234,144 @@ const arrangeItems = () => {
     );
   };
 
-  // PDFファイルの生成を複数ページに対応させる
-  const generatePDF = async () => {
-    setIsGenerating(true);
-    setError(null);
+  // PDFファイルの生成
+const generatePDF = async () => {
+  setIsGenerating(true);
+  setError(null);
+  
+  try {
+    const { width, height } = calculateOutputSize();
+    const orientation = layoutSettings.orientation === 'landscape' ? 'landscape' : 'portrait';
     
-    try {
-      const { width, height } = calculateOutputSize();
-      const orientation = layoutSettings.orientation === 'landscape' ? 'landscape' : 'portrait';
+    // PDF生成
+    const pdf = new jsPDF({
+      orientation,
+      unit: 'mm',
+      format: layoutSettings.outputSize === 'custom' ? [width, height] : layoutSettings.outputSize
+    });
+    
+    // 無限長の場合は単一ページで出力
+    if (layoutSettings.outputSize === 'infinite') {
+      if (outputContainerRef.current) {
+        const dataUrl = await toPng(outputContainerRef.current, { 
+          pixelRatio: 2,
+          backgroundColor: '#ffffff'
+        });
+        
+        const img = new Image();
+        await new Promise(resolve => {
+          img.onload = resolve;
+          img.src = dataUrl;
+        });
+        
+        const pdfWidth = pdf.internal.pageSize.getWidth();
+        const aspect = img.height / img.width;
+        const pdfHeight = pdfWidth * aspect;
+        
+        // PDFのサイズを調整
+        pdf.addPage([pdfWidth, pdfHeight], orientation);
+        pdf.setPage(2);
+        pdf.deletePage(1);
+        
+        // 画像をPDFに追加
+        pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      }
+    } 
+    // 固定サイズの場合は複数ページに対応
+    else {
+      // トリミングされた画像のレイアウト計算
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
       
-      // PDF生成
-      const pdf = new jsPDF({
-        orientation,
-        unit: 'mm',
-        format: layoutSettings.outputSize === 'custom' ? [width, height] : layoutSettings.outputSize
+      // 各画像のデータを準備
+      const imageItems = await Promise.all(previewImages.map(async (imgSrc, index) => {
+        const img = new Image();
+        await new Promise(resolve => {
+          img.onload = resolve;
+          img.src = imgSrc;
+        });
+        
+        // 縦幅は統一（trimSettings.height）するが、横幅は元のアスペクト比から計算
+        // 拡大はせず、元の比率を保持
+        const imgHeight = trimSettings.height / 10; // mmに変換する係数（1/10）
+        const imgWidth = (img.width / img.height) * imgHeight;
+        
+        return { 
+          img: imgSrc, 
+          width: imgWidth, 
+          height: imgHeight,
+          originalWidth: img.width,
+          originalHeight: img.height
+        };
+      }));
+      
+      // レイアウト計算
+      const columns = layoutSettings.columns;
+      const spacing = calculateSpacing(imageItems[0].height) / 10; // mmに変換
+      
+      // ページ内の配置座標を計算
+      const positions = [];
+      let currentX = 0;
+      let currentY = 0;
+      let maxHeightInRow = 0;
+      let colIndex = 0;
+      
+      imageItems.forEach((item, index) => {
+        // 新しい行の開始
+        if (colIndex >= columns) {
+          colIndex = 0;
+          currentX = 0;
+          currentY += maxHeightInRow + spacing;
+          maxHeightInRow = 0;
+        }
+        
+        // 現在の位置を保存
+        positions.push({
+          x: currentX,
+          y: currentY,
+          width: item.width,
+          height: item.height,
+          image: item.img
+        });
+        
+        // 次の画像の位置を計算
+        currentX += item.width + spacing;
+        colIndex++;
+        maxHeightInRow = Math.max(maxHeightInRow, item.height);
+        
+        // ページ境界をチェック：次の行が新しいページになるかどうか
+        if (currentY + maxHeightInRow > pdfHeight && index < imageItems.length - 1) {
+          // 新しいページが必要
+          pdf.addPage();
+          currentX = 0;
+          currentY = 0;
+          colIndex = 0;
+          maxHeightInRow = 0;
+        }
       });
       
-      // 無限長の場合は単一ページで出力
-      if (layoutSettings.outputSize === 'infinite') {
-        if (outputContainerRef.current) {
-          const dataUrl = await toPng(outputContainerRef.current, { 
-            pixelRatio: 2,
-            backgroundColor: '#ffffff'
-          });
-          
-          const img = new Image();
-          await new Promise(resolve => {
-            img.onload = resolve;
-            img.src = dataUrl;
-          });
-          
-          const pdfWidth = pdf.internal.pageSize.getWidth();
-          const aspect = img.height / img.width;
-          const pdfHeight = pdfWidth * aspect;
-          
-          // PDFのサイズを調整
-          pdf.addPage([pdfWidth, pdfHeight], orientation);
-          pdf.setPage(2);
-          pdf.deletePage(1);
-          
-          // 画像をPDFに追加
-          pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
-        }
-      } 
-      // 固定サイズの場合は複数ページに分割
-      else {
-        // トリミングされた画像のレイアウト計算
-        const pdfWidth = pdf.internal.pageSize.getWidth();
-        const pdfHeight = pdf.internal.pageSize.getHeight();
-        const pageArea = pdfWidth * pdfHeight;
-        
-        // 各画像のデータを準備
-        const imageItems = await Promise.all(previewImages.map(async (imgSrc) => {
-          const img = new Image();
-          await new Promise(resolve => {
-            img.onload = resolve;
-            img.src = imgSrc;
-          });
-          
-          // アスペクト比を維持したサイズ計算
-          const imgWidth = pdfWidth / layoutSettings.columns;
-          const imgHeight = imgWidth * (img.height / img.width);
-          
-          return { img: imgSrc, width: imgWidth, height: imgHeight };
-        }));
-        
-        // 画像を配置するためのグリッドを計算
-        const imgsPerPage = Math.floor(pageArea / (imageItems[0].width * imageItems[0].height));
-        const totalPages = Math.ceil(imageItems.length / imgsPerPage);
-        
-        // 各ページに画像を配置
-        for (let page = 0; page < totalPages; page++) {
-          if (page > 0) {
-            pdf.addPage(layoutSettings.outputSize, orientation);
-          }
-          
-          const startIdx = page * imgsPerPage;
-          const endIdx = Math.min(startIdx + imgsPerPage, imageItems.length);
-          
-          // 現在のページの画像を配置
-          for (let i = startIdx; i < endIdx; i++) {
-            const item = imageItems[i];
-            const col = (i - startIdx) % layoutSettings.columns;
-            const row = Math.floor((i - startIdx) / layoutSettings.columns);
-            
-            const x = col * item.width;
-            const y = row * item.height;
-            
-            pdf.addImage(item.img, 'PNG', x, y, item.width, item.height);
-          }
-        }
-      }
-      
-      // ダウンロード
-      pdf.save('楽譜レイアウト.pdf');
-    } catch (err) {
-      console.error('PDF生成エラー:', err);
-      setError('PDFの生成中にエラーが発生しました。');
-    } finally {
-      setIsGenerating(false);
+      // 画像をPDFに配置
+      positions.forEach(pos => {
+        pdf.addImage(
+          pos.image, 
+          'JPEG', 
+          pos.x, 
+          pos.y, 
+          pos.width, 
+          pos.height
+        );
+      });
     }
-  };
+    
+    // ダウンロード
+    pdf.save('楽譜レイアウト.pdf');
+  } catch (err) {
+    console.error('PDF生成エラー:', err);
+    setError('PDFの生成中にエラーが発生しました。');
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   // 画像ファイルの生成
   const generateImage = async () => {

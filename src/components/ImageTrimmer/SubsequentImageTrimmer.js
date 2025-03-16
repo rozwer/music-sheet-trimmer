@@ -36,62 +36,70 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   }, [image, trimSettings]);
 
   // ハイライト位置の更新
-  const updateHighlightPosition = (offset) => {
-    if (highlightRef.current && imageContainerRef.current && imageObj) {
-      const containerHeight = imageContainerRef.current.offsetHeight;
-      const scale = containerHeight / imageObj.height;
-      
-      const highlightHeight = trimSettings.height * scale;
-      highlightRef.current.style.height = `${highlightHeight}px`;
-      
-      // Y位置の計算（トリミング設定の位置 + オフセット）
-      const topPosition = (trimSettings.yPosition + offset) * scale;
-      highlightRef.current.style.top = `${topPosition}px`;
-    }
-  };
+const updateHighlightPosition = (offset) => {
+  if (highlightRef.current && imageContainerRef.current && imageObj) {
+    const containerHeight = imageContainerRef.current.offsetHeight;
+    const containerWidth = imageContainerRef.current.offsetWidth;
+    
+    // 表示スケールの計算
+    const scale = containerHeight / imageObj.height;
+    
+    // 横幅は元画像の幅に合わせる（一枚目の設定に依存しない）
+    const highlightWidth = containerWidth; // 横幅は画面幅いっぱい
+    const highlightHeight = trimSettings.height * scale; // 縦幅は統一
+    
+    highlightRef.current.style.width = `${highlightWidth}px`;
+    highlightRef.current.style.height = `${highlightHeight}px`;
+    
+    // Y位置の計算（トリミング設定の位置 + オフセット）
+    const topPosition = (trimSettings.yPosition + offset) * scale;
+    highlightRef.current.style.top = `${topPosition}px`;
+    highlightRef.current.style.left = '0'; // 横方向は左端から
+  }
+};
 
-  // キャンバスでの描画処理
-  const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
-    if (!canvasRef.current || !img) return;
-    
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    
-    // トリミング後のサイズをキャンバスサイズとして使用
-    const effectiveWidth = trimSettings.width - leftTrim - rightTrim;
-    const effectiveHeight = trimSettings.height;
-    
-    // キャンバスサイズの設定
-    if (rotation === 90 || rotation === 270) {
-      canvas.width = effectiveHeight;
-      canvas.height = effectiveWidth;
-    } else {
-      canvas.width = effectiveWidth;
-      canvas.height = effectiveHeight;
-    }
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 回転とトリミングの適用
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-    
-    // 1枚目で設定された範囲でトリミング
-    ctx.drawImage(
-      img,
-      trimSettings.x + leftTrim,
-      trimSettings.yPosition + yOffset,
-      effectiveWidth,
-      effectiveHeight,
-      -effectiveWidth / 2,
-      -effectiveHeight / 2,
-      effectiveWidth,
-      effectiveHeight
-    );
-    
-    ctx.restore();
-  };
+  // renderCanvas関数の修正
+const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
+  if (!canvasRef.current || !img) return;
+  
+  const canvas = canvasRef.current;
+  const ctx = canvas.getContext('2d');
+  
+  // 縦幅のみ一枚目から引き継ぎ、横幅は画像幅から左右のトリムを引いた値を使用
+  const effectiveWidth = img.width - leftTrim - rightTrim; // 一枚目のwidthは使わない
+  const effectiveHeight = trimSettings.height; // 縦幅は統一
+  
+  // キャンバスサイズの設定
+  if (rotation === 90 || rotation === 270) {
+    canvas.width = effectiveHeight;
+    canvas.height = effectiveWidth;
+  } else {
+    canvas.width = effectiveWidth;
+    canvas.height = effectiveHeight;
+  }
+  
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
+  // 回転とトリミングの適用
+  ctx.save();
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate((rotation * Math.PI) / 180);
+  
+  // トリミング位置の計算：横方向は左端からの相対位置、縦方向は一枚目の設定+オフセット
+  ctx.drawImage(
+    img,
+    leftTrim, // 一枚目のx座標は使わず、左トリム値からスタート
+    trimSettings.yPosition + yOffset, // 縦座標は一枚目の設定を引き継ぎ
+    effectiveWidth,
+    effectiveHeight,
+    -effectiveWidth / 2,
+    -effectiveHeight / 2,
+    effectiveWidth,
+    effectiveHeight
+  );
+  
+  ctx.restore();
+};
 
   // 画像の回転処理
   const handleRotate = (degrees) => {
