@@ -121,20 +121,32 @@ const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
     }
   };
 
-  // 左右トリミングの調整
-  const handleLeftTrimChange = (event, newValue) => {
-    setLeftTrim(newValue);
-    if (imageObj) {
-      renderCanvas(imageObj, rotation, yOffset, newValue, rightTrim);
-    }
-  };
+  // 左右トリミングのハンドラを修正
+const handleLeftTrimChange = (event, newValue) => {
+  // 右側トリミングとの最小間隔を10pxとする
+  const maxAllowedLeftTrim = Math.max(0, originalDimensions.width - rightTrim - 10);
+  
+  // 新しい値をバリデーション
+  const validatedValue = Math.min(newValue, maxAllowedLeftTrim);
+  
+  setLeftTrim(validatedValue);
+  if (imageObj) {
+    renderCanvas(imageObj, rotation, yOffset, validatedValue, rightTrim);
+  }
+};
 
-  const handleRightTrimChange = (event, newValue) => {
-    setRightTrim(newValue);
-    if (imageObj) {
-      renderCanvas(imageObj, rotation, yOffset, leftTrim, newValue);
-    }
-  };
+const handleRightTrimChange = (event, newValue) => {
+  // 左側トリミングとの最小間隔を10pxとする
+  const maxAllowedRightTrim = Math.max(0, originalDimensions.width - leftTrim - 10);
+  
+  // 新しい値をバリデーション
+  const validatedValue = Math.min(newValue, maxAllowedRightTrim);
+  
+  setRightTrim(validatedValue);
+  if (imageObj) {
+    renderCanvas(imageObj, rotation, yOffset, leftTrim, validatedValue);
+  }
+};
 
   // マウスドラッグ開始
   const handleMouseDown = (e) => {
@@ -281,66 +293,37 @@ const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
           トリミング調整
         </Typography>
         
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <Typography variant="body2" gutterBottom>
-              元の画像（ハイライト部分をドラッグして位置調整）:
-            </Typography>
-            <Box 
-              ref={imageContainerRef}
-              sx={{ 
-                position: 'relative', 
-                height: '350px',
-                border: '1px solid #ddd',
-                overflow: 'hidden',
-                mb: 2,
-                '& img': {
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  width: 'auto',
-                  height: '100%',
-                  objectFit: 'contain',
-                  display: 'block',
-                  margin: '0 auto'
-                }
-              }}
-            >
-              <img src={image.preview} alt="トリミング元画像" />
-              <Box 
-                ref={highlightRef}
-                sx={{ 
-                  position: 'absolute',
-                  left: 0,
-                  width: '100%',
-                  background: 'rgba(0, 123, 255, 0.3)',
-                  border: '2px dashed #0077ff',
-                  cursor: 'move',
-                  zIndex: 10,
-                  boxSizing: 'border-box',
-                  touchAction: 'none' // タッチ操作時の挙動制御
-                }}
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-              />
-            </Box>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <Typography variant="body2" gutterBottom>
-              プレビュー:
-            </Typography>
-            <Box sx={{ textAlign: 'center', mb: 2 }}>
-              <canvas 
-                ref={canvasRef} 
-                style={{ 
-                  maxWidth: '100%', 
-                  maxHeight: '350px',
-                  border: '1px solid #ddd'
-                }}
-              />
-            </Box>
-          </Grid>
-        </Grid>
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+    <Grid item xs={12} sm={6}>
+      <Typography id="left-trim-slider" gutterBottom>
+        左端トリミング
+      </Typography>
+      <Slider
+        aria-labelledby="left-trim-slider"
+        value={leftTrim}
+        onChange={handleLeftTrimChange}
+        min={0}
+        max={originalDimensions.width ? originalDimensions.width - 10 : 100} // ほぼ全幅まで
+        step={1}
+        valueLabelDisplay="auto"
+      />
+    </Grid>
+
+    <Grid item xs={12} sm={6}>
+      <Typography id="right-trim-slider" gutterBottom>
+        右端トリミング
+      </Typography>
+      <Slider
+        aria-labelledby="right-trim-slider"
+        value={rightTrim}
+        onChange={handleRightTrimChange}
+        min={0}
+        max={originalDimensions.width ? originalDimensions.width - 10 : 100} // ほぼ全幅まで
+        step={1}
+        valueLabelDisplay="auto"
+      />
+    </Grid>
+  </Grid>
 
         <Box sx={{ mt: 3 }}>
           <Typography id="y-offset-slider" gutterBottom>
