@@ -87,9 +87,22 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       const containerHeight = imageContainerRef.current.offsetHeight;
       const containerWidth = imageContainerRef.current.offsetWidth;
       
-      // 表示スケールの計算
-      const scaleHeight = containerHeight / imageObj.height;
-      const scaleWidth = containerWidth / imageObj.width;
+      // 画像の表示スケールを計算
+      // イメージ自体のアスペクト比を考慮
+      const imageAspectRatio = imageObj.width / imageObj.height;
+      const containerAspectRatio = containerWidth / containerHeight;
+      
+      let scaleWidth, scaleHeight;
+      
+      if (imageAspectRatio > containerAspectRatio) {
+        // 画像が横長の場合、幅に合わせる
+        scaleWidth = containerWidth / imageObj.width;
+        scaleHeight = scaleWidth; // アスペクト比を維持
+      } else {
+        // 画像が縦長の場合、高さに合わせる
+        scaleHeight = containerHeight / imageObj.height;
+        scaleWidth = scaleHeight; // アスペクト比を維持
+      }
       
       // 有効な幅を計算（左右トリムを考慮）
       const effectiveWidth = imageObj.width - left - right;
@@ -106,7 +119,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       const leftPosition = left * scaleWidth;
       
       highlightRef.current.style.top = `${topPosition}px`;
-      highlightRef.current.style.left = `${leftPosition}px`; // 左トリム位置から開始
+      highlightRef.current.style.left = `${leftPosition}px`;
     }
   };
 
