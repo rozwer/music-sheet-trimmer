@@ -1,14 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
 import { 
-  Box, Typography, Paper, Button, FormControl, FormControlLabel, 
-  RadioGroup, Radio, Grid, CircularProgress, Alert
+  Box, Typography, Paper, Button, Grid, CircularProgress, Alert
 } from '@mui/material';
 import { jsPDF } from 'jspdf';
-import { toPng } from 'html-to-image';
 import DownloadIcon from '@mui/icons-material/Download';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
-import ImageIcon from '@mui/icons-material/Image';
 
 // 用紙サイズ定義 (mm単位)
 const paperSizes = {
@@ -19,7 +16,6 @@ const paperSizes = {
 
 const OutputGenerator = () => {
   const { images, layoutSettings, trimSettings } = useAppContext();
-  const [outputFormat, setOutputFormat] = useState('pdf');
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState(null);
   const [previewImages, setPreviewImages] = useState([]);
@@ -76,11 +72,6 @@ const OutputGenerator = () => {
       createTrimmingPreview();
     }
   }, [images, trimSettings]);
-
-  // 出力形式の変更ハンドラ
-  const handleFormatChange = (event) => {
-    setOutputFormat(event.target.value);
-  };
 
   // 出力サイズの計算
   const calculateOutputSize = () => {
@@ -261,37 +252,115 @@ const OutputGenerator = () => {
       
       let pdf; // 変数をここで宣言して両方の分岐で使えるようにする
       
-      // 無限長の場合は単一ページで出力
-      if (layoutSettings.outputSize === 'infinite') {
-        if (outputContainerRef.current) {
-          const dataUrl = await toPng(outputContainerRef.current, { 
-            pixelRatio: 2,
-            backgroundColor: '#ffffff'
-          });
-          
+      // 各画像のアスペクト比を取得するヘルパー関数
+      const getImageDimensions = (imgSrc) => {
+        return new Promise((resolve) => {
           const img = new Image();
-          await new Promise(resolve => {
-            img.onload = resolve;
-            img.src = dataUrl;
-          });
+          img.onload = () => {
+            resolve({
+              width: img.width,
+              height: img.height,
+              aspectRatio: img.width / img.height
+            });
+          };
+          img.src = imgSrc;
+        });
+      };
+      
+      // アスペクト比を維持して画像を配置するヘルパー関数
+      const addImageWithAspectRatio = (pdf, imgSrc, x, y, boxWidth, boxHeight) => {
+        return getImageDimensions(imgSrc).then(({ aspectRatio }) => {
+          let imgWidth, imgHeight;
           
-          // アスペクト比から適切なPDFサイズを計算
-          const imageAspect = img.height / img.width;
-          const pdfWidth = paperSizes.a4.width; // A4幅を基準
-          const pdfHeight = pdfWidth * imageAspect;
+          // ボックスのアスペクト比と画像のアスペクト比を比較
+          const boxAspectRatio = boxWidth / boxHeight;
           
-          // 直接適切なサイズでPDFを初期化
-          pdf = new jsPDF({
-            orientation: 'portrait',
-            unit: 'mm',
-            format: [pdfWidth, pdfHeight]
-          });
+          if (aspectRatio > boxAspectRatio) {
+            // 画像が横長の場合、幅に合わせる
+            imgWidth = boxWidth;
+            imgHeight = imgWidth / aspectRatio;
+          } else {
+            // 画像が縦長の場合、高さに合わせる
+            imgHeight = boxHeight;
+            imgWidth = imgHeight * aspectRatio;
+          }
           
-          // 画像をPDFに追加（サイズいっぱいに配置）
-          pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          // 中央揃えのためのオフセットを計算
+          const offsetX = (boxWidth - imgWidth) / 2;
+          const offsetY = (boxHeight - imgHeight) / 2;
+          
+          // 画像を中央に配置
+          pdf.addImage(
+            imgSrc,
+            'JPEG',
+            x + offsetX,
+            y + offsetY,
+            imgWidth,
+            imgHeight
+          );
+        });
+      };
+      
+      // 無限長の場合は1つの長いページとして出力
+      if (layoutSettings.outputSize === 'infinite') {
+        // 基準となる幅をA4に設定
+        const baseWidth = paperSizes.a4.width;
+        
+        // 余白設定
+        const margin = 10;
+        
+        // 使用可能な幅を計算
+        const usableWidth = baseWidth - (margin * 2);
+        
+        // 列数
+        const columns = parseInt(layoutSettings.columns) || 1;
+        
+        // 画像サイズとアスペクト比を計算
+        const columnWidth = usableWidth / columns;
+        const aspectRatio = trimSettings.width / trimSettings.height;
+        const imageHeight = columnWidth / aspectRatio;
+        const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
+        
+        // 画像の総数から必要な高さを計算
+        const totalImages = previewImages.length;
+        const imagesPerColumn = Math.ceil(totalImages / columns);
+        const totalHeight = (imagesPerColumn * imageHeight) + ((imagesPerColumn - 1) * spacing) + (margin * 2);
+        
+        // カスタムサイズの長いページを持つPDFを作成
+        pdf = new jsPDF({
+          orientation: 'portrait',
+          unit: 'mm',
+          format: [baseWidth, totalHeight]
+        });
+        
+        // すべての画像の配置を待つために Promise の配列を作成
+        const imagePromises = [];
+        
+        // 列ごとに画像を配置（上下優先レイアウト）
+        for (let col = 0; col < columns; col++) {
+          // この列に配置する画像を抽出
+          const colImages = [];
+          for (let i = col; i < totalImages; i += columns) {
+            colImages.push(previewImages[i]);
+          }
+          
+          // 列の画像を上から下へ配置
+          for (let row = 0; row < colImages.length; row++) {
+            const imgSrc = colImages[row];
+            const x = margin + col * columnWidth;
+            const y = margin + row * (imageHeight + spacing);
+            
+            // アスペクト比を維持して画像を追加
+            imagePromises.push(
+              addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight)
+            );
+          }
         }
+        
+        // すべての画像の配置が完了するのを待つ
+        await Promise.all(imagePromises);
       } 
-      // 固定サイズの場合は複数ページに対応
+      // 固定サイズの場合の処理を修正
       else {
         // PDF生成
         pdf = new jsPDF({
@@ -304,181 +373,75 @@ const OutputGenerator = () => {
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = pdf.internal.pageSize.getHeight();
         
-        // 目標アスペクト比を計算（トリミング設定から）
-        const targetAspectRatio = trimSettings.width / trimSettings.height;
+        // 列数
+        const columns = parseInt(layoutSettings.columns) || 1;
         
-        // 各画像のデータを準備し、必要に応じて横に空白を追加
-        const imageItems = await Promise.all(previewImages.map(async (imgSrc) => {
-          const img = new Image();
-          await new Promise(resolve => {
-            img.onload = resolve;
-            img.src = imgSrc;
-          });
-          
-          // 画像の実際のアスペクト比を計算
-          const actualAspectRatio = img.width / img.height;
-          
-          // アスペクト比を比較して、必要に応じて横に空白を追加
-          if (Math.abs(actualAspectRatio - targetAspectRatio) < 0.01) {
-            // アスペクト比がほぼ同じ場合は変更なし
-            return { 
-              src: imgSrc,
-              aspectRatio: actualAspectRatio,
-              needsPadding: false
-            };
-          } else if (actualAspectRatio < targetAspectRatio) {
-            // 画像が縦長すぎる場合、横に空白を追加
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            
-            // 元の高さを保持し、目標アスペクト比に合わせた幅を計算
-            const canvasHeight = img.height;
-            const canvasWidth = canvasHeight * targetAspectRatio;
-            
-            // キャンバスサイズを設定
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
-            
-            // 背景を白で塗りつぶす
-            ctx.fillStyle = '#FFFFFF';
-            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
-            
-            // 画像を中央に配置
-            const xOffset = (canvasWidth - img.width) / 2;
-            ctx.drawImage(img, xOffset, 0, img.width, img.height);
-            
-            // 新しい画像をデータURLとして取得
-            const paddedImageSrc = canvas.toDataURL('image/jpeg', 0.95);
-            
-            return { 
-              src: paddedImageSrc,
-              aspectRatio: targetAspectRatio,
-              needsPadding: true
-            };
-          } else {
-            // 画像が横長すぎる場合（これは既にトリミングで処理されているはずなので、念のため）
-            return { 
-              src: imgSrc,
-              aspectRatio: actualAspectRatio,
-              needsPadding: false
-            };
-          }
-        }));
-        
-        // レイアウト計算
-        const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
+        // 画像サイズとアスペクト比を計算
         const margin = 10; // ページ余白（mm）
-        
-        // 列の幅を計算（余白を考慮）
         const usableWidth = pdfWidth - (margin * 2);
         const columnWidth = usableWidth / columns;
         
-        // 最大サイズを設定
-        const maxWidth = columnWidth;
-        const maxHeight = maxWidth / targetAspectRatio;
+        // アスペクト比を計算
+        const aspectRatio = trimSettings.width / trimSettings.height;
+        const imageHeight = columnWidth / aspectRatio;
         
         // 間隔を計算
-        const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(maxHeight);
+        const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
         
-        // 1ページに配置可能な行数を計算
+        // 1ページに入る行数を計算
         const usableHeight = pdfHeight - (margin * 2);
-        const rowsPerPage = Math.floor(usableHeight / (maxHeight + spacing));
+        const rowsPerPage = Math.floor(usableHeight / (imageHeight + spacing));
         const imagesPerPage = rowsPerPage * columns;
         
         // 必要なページ数を計算
-        const totalPages = Math.ceil(imageItems.length / imagesPerPage);
+        const totalPages = Math.ceil(previewImages.length / imagesPerPage);
         
-        // 各ページに画像を配置（最初のページは保持）
+        // 各ページに画像を配置
         for (let pageIndex = 0; pageIndex < totalPages; pageIndex++) {
           // 2ページ目以降は新しいページを追加
           if (pageIndex > 0) {
             pdf.addPage();
           }
           
+          // すべての画像の配置を待つために Promise の配列を作成
+          const pageImagePromises = [];
+          
           // このページに配置する画像のインデックス範囲
           const startIndex = pageIndex * imagesPerPage;
-          const endIndex = Math.min((pageIndex + 1) * imagesPerPage, imageItems.length);
-          
-          // このページに配置する画像
-          const pageImages = imageItems.slice(startIndex, endIndex);
+          const endIndex = Math.min((pageIndex + 1) * imagesPerPage, previewImages.length);
           
           // 常に上下優先レイアウトで配置
           for (let col = 0; col < columns; col++) {
-            const colImages = [];
             // この列に配置する画像を抽出
-            for (let i = col; i < pageImages.length; i += columns) {
-              colImages.push(pageImages[i]);
-            }
-            
-            // 列の画像を上から下へ配置
-            for (let row = 0; row < colImages.length; row++) {
-              const image = colImages[row];
-              const x = margin + col * columnWidth;
-              const y = margin + row * (maxHeight + spacing);
-              
-              // 画像を追加（アスペクト比を維持）
-              pdf.addImage(
-                image.src,
-                'JPEG',
-                x,
-                y,
-                maxWidth,
-                maxHeight
-              );
+            for (let i = 0; i < rowsPerPage; i++) {
+              const imageIndex = startIndex + i * columns + col;
+              if (imageIndex < endIndex && imageIndex < previewImages.length) {
+                const imgSrc = previewImages[imageIndex];
+                const x = margin + col * columnWidth;
+                const y = margin + i * (imageHeight + spacing);
+                
+                // アスペクト比を維持して画像を追加
+                pageImagePromises.push(
+                  addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight)
+                );
+              }
             }
           }
+          
+          // このページのすべての画像の配置が完了するのを待つ
+          await Promise.all(pageImagePromises);
         }
       }
       
-      // ダウンロード（両方の分岐で pdf が定義されていることを確認）
+      // ダウンロード
       if (pdf) {
         pdf.save('楽譜レイアウト.pdf');
       }
     } catch (err) {
       console.error('PDF生成エラー:', err);
-      setError('PDFの生成中にエラーが発生しました。');
+      setError('PDFの生成中にエラーが発生しました: ' + err.message);
     } finally {
       setIsGenerating(false);
-    }
-  };
-
-  // 画像ファイルの生成を修正
-  const generateImage = async () => {
-    setIsGenerating(true);
-    setError(null);
-    
-    try {
-      if (outputContainerRef.current) {
-        // 高解像度で画像を生成
-        const dataUrl = await toPng(outputContainerRef.current, { 
-          pixelRatio: 2,
-          backgroundColor: '#ffffff',
-          canvasWidth: outputContainerRef.current.offsetWidth * 2,
-          canvasHeight: outputContainerRef.current.offsetHeight * 2
-        });
-        
-        // ダウンロードリンクを作成して明示的にクリック
-        const link = document.createElement('a');
-        link.href = dataUrl;
-        link.download = '楽譜レイアウト.png';
-        document.body.appendChild(link); // DOMに追加
-        link.click();
-        document.body.removeChild(link); // クリック後に削除
-      }
-    } catch (err) {
-      console.error('画像生成エラー:', err);
-      setError('画像の生成中にエラーが発生しました。エラー詳細: ' + err.message);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // 出力ボタンクリック時の処理
-  const handleGenerateOutput = () => {
-    if (outputFormat === 'pdf') {
-      generatePDF();
-    } else {
-      generateImage();
     }
   };
 
@@ -523,44 +486,16 @@ const OutputGenerator = () => {
               出力設定
             </Typography>
             
-            <FormControl component="fieldset" sx={{ mt: 2 }}>
-              <Typography variant="body2" gutterBottom>
-                出力形式
-              </Typography>
-              <RadioGroup row value={outputFormat} onChange={handleFormatChange}>
-                <FormControlLabel 
-                  value="pdf" 
-                  control={<Radio />} 
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <PictureAsPdfIcon sx={{ mr: 0.5 }} fontSize="small" />
-                      PDF
-                    </Box>
-                  } 
-                />
-                <FormControlLabel 
-                  value="image" 
-                  control={<Radio />} 
-                  label={
-                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                      <ImageIcon sx={{ mr: 0.5 }} fontSize="small" />
-                      画像
-                    </Box>
-                  } 
-                />
-              </RadioGroup>
-            </FormControl>
-            
             <Box sx={{ mt: 3 }}>
               <Button
                 variant="contained"
                 color="primary"
-                startIcon={isGenerating ? <CircularProgress size={24} color="inherit" /> : <DownloadIcon />}
-                onClick={handleGenerateOutput}
+                startIcon={isGenerating ? <CircularProgress size={24} color="inherit" /> : <PictureAsPdfIcon />}
+                onClick={generatePDF}
                 disabled={isGenerating}
                 fullWidth
               >
-                {isGenerating ? '生成中...' : `${outputFormat === 'pdf' ? 'PDF' : '画像'}としてダウンロード`}
+                {isGenerating ? 'PDF生成中...' : 'PDFとしてダウンロード'}
               </Button>
             </Box>
           </Paper>
