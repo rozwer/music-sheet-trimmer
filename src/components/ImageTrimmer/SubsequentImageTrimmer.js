@@ -84,25 +84,26 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   // ハイライト位置の更新
   const updateHighlightPosition = (offset, left = leftTrim, right = rightTrim) => {
     if (highlightRef.current && imageContainerRef.current && imageObj) {
-      const containerHeight = imageContainerRef.current.offsetHeight;
-      const containerWidth = imageContainerRef.current.offsetWidth;
+      const container = imageContainerRef.current;
+      const containerRect = container.getBoundingClientRect();
       
-      // 画像の表示スケールを計算
-      // イメージ自体のアスペクト比を考慮
-      const imageAspectRatio = imageObj.width / imageObj.height;
-      const containerAspectRatio = containerWidth / containerHeight;
+      // 画像要素を取得
+      const imgElement = container.querySelector('img');
+      if (!imgElement) return;
       
-      let scaleWidth, scaleHeight;
+      const imgRect = imgElement.getBoundingClientRect();
       
-      if (imageAspectRatio > containerAspectRatio) {
-        // 画像が横長の場合、幅に合わせる
-        scaleWidth = containerWidth / imageObj.width;
-        scaleHeight = scaleWidth; // アスペクト比を維持
-      } else {
-        // 画像が縦長の場合、高さに合わせる
-        scaleHeight = containerHeight / imageObj.height;
-        scaleWidth = scaleHeight; // アスペクト比を維持
-      }
+      // 画像の実際の表示サイズを取得
+      const displayedImageWidth = imgRect.width;
+      const displayedImageHeight = imgRect.height;
+      
+      // 画像のコンテナ内でのオフセットを計算
+      const imageLeftOffset = imgRect.left - containerRect.left;
+      const imageTopOffset = imgRect.top - containerRect.top;
+      
+      // 画像の実際のスケールを計算
+      const scaleWidth = displayedImageWidth / imageObj.width;
+      const scaleHeight = displayedImageHeight / imageObj.height;
       
       // 有効な幅を計算（左右トリムを考慮）
       const effectiveWidth = imageObj.width - left - right;
@@ -114,9 +115,9 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       highlightRef.current.style.width = `${highlightWidth}px`;
       highlightRef.current.style.height = `${highlightHeight}px`;
       
-      // 位置の計算（トリミング設定の位置 + オフセット）
-      const topPosition = (trimSettings.yPosition + offset) * scaleHeight;
-      const leftPosition = left * scaleWidth;
+      // 位置の計算（トリミング設定の位置 + オフセット）- 画像のオフセットを考慮
+      const topPosition = imageTopOffset + (trimSettings.yPosition + offset) * scaleHeight;
+      const leftPosition = imageLeftOffset + left * scaleWidth;
       
       highlightRef.current.style.top = `${topPosition}px`;
       highlightRef.current.style.left = `${leftPosition}px`;
