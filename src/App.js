@@ -4,11 +4,10 @@ import ImageUploader from './components/ImageUploader';
 import './App.css';
 import { Box, Stepper, Step, StepLabel, Button, Typography, Container, Paper } from '@mui/material';
 import ImageTrimmer from './components/ImageTrimmer';
+import SubsequentImagesTrimmer from './components/ImageTrimmer/index2';
+import TimeSettings from './components/TrimSettings';
 import LayoutSettings from './components/LayoutSettings';
 import OutputGenerator from './components/OutputGenerator';
-// 後で実装するコンポーネント（現時点ではプレースホルダー）
-
-
 
 function AppContent() {
   const { currentStep, steps, nextStep, prevStep, images } = useAppContext();
@@ -18,11 +17,15 @@ function AppContent() {
     switch (currentStep) {
       case 0:
         return <ImageUploader />;
-      case 1:
-        return <ImageTrimmer />;
       case 2:
-        return <LayoutSettings />;
+        return <ImageTrimmer />;
       case 3:
+        return <SubsequentImagesTrimmer />;
+      case 1:
+        return <TimeSettings />;
+      case 4:
+        return <LayoutSettings />;
+      case 5:
         return <OutputGenerator />;
       default:
         return <div>不明なステップ</div>;
@@ -32,7 +35,14 @@ function AppContent() {
   // 次のステップに進むボタンを無効化する条件
   const isNextDisabled = () => {
     if (currentStep === 0 && images.length === 0) return true;
+    // トリミング設定が必要な場合はここに追加
     return false;
+  };
+
+  // 特定のステップの表示制御
+  const shouldSkipStep = (step) => {
+    // 画像が1枚しかない場合、全体調整ステップをスキップ
+    return step === 2 && images.length === 1;
   };
 
   return (
@@ -44,7 +54,7 @@ function AppContent() {
         
         <Stepper activeStep={currentStep} sx={{ mb: 4 }}>
           {steps.map((label, index) => (
-            <Step key={label}>
+            <Step key={label} disabled={shouldSkipStep(index)}>
               <StepLabel>{label}</StepLabel>
             </Step>
           ))}

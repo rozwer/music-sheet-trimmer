@@ -5,7 +5,15 @@ const AppContext = createContext();
 export function AppProvider({ children }) {
   // ステップ管理
   const [currentStep, setCurrentStep] = useState(0);
-  const steps = ['アップロード', 'トリミング', 'レイアウト', '出力'];
+  const steps = [
+    'アップロード',
+    '順序設定',
+    '基準トリミング',
+    '全体調整',
+    
+    'レイアウト',
+    '出力'
+  ];
 
   // 画像データ管理
   const [images, setImages] = useState([]);
@@ -47,14 +55,20 @@ export function AppProvider({ children }) {
 
   // 次のステップへ
   const nextStep = () => {
-    if (currentStep < steps.length - 1) {
+    // 画像が1枚しかない場合、全体調整ステップをスキップ
+    if (currentStep === 1 && images.length === 1) {
+      setCurrentStep(currentStep + 2); // 順序設定へ直接進む
+    } else if (currentStep < steps.length - 1) {
       setCurrentStep(currentStep + 1);
     }
   };
 
   // 前のステップへ
   const prevStep = () => {
-    if (currentStep > 0) {
+    // 画像が1枚しかない場合、全体調整ステップをスキップ
+    if (currentStep === 3 && images.length === 1) {
+      setCurrentStep(currentStep - 2); // 基準トリミングへ直接戻る
+    } else if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
     }
   };
