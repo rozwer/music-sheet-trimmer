@@ -267,37 +267,49 @@ const OutputGenerator = () => {
         });
       };
       
+      // 最大アスペクト比を求める
+      const largestRatio = await (async () => {
+        let maxR = 0;
+        for (const imgSrc of previewImages) {
+          const dims = await getImageDimensions(imgSrc);
+          const ratio = dims.width / dims.height;
+          if (ratio > maxR) maxR = ratio;
+        }
+        return maxR;
+      })();
+      
       // アスペクト比を維持して画像を配置するヘルパー関数
-      const addImageWithAspectRatio = (pdf, imgSrc, x, y, boxWidth, boxHeight) => {
-        return getImageDimensions(imgSrc).then(({ aspectRatio }) => {
-          let imgWidth, imgHeight;
-          
-          // ボックスのアスペクト比と画像のアスペクト比を比較
-          const boxAspectRatio = boxWidth / boxHeight;
-          
-          if (aspectRatio > boxAspectRatio) {
-            // 画像が横長の場合、幅に合わせる
-            imgWidth = boxWidth;
-            imgHeight = imgWidth / aspectRatio;
-          } else {
-            // 画像が縦長の場合、高さに合わせる
-            imgHeight = boxHeight;
-            imgWidth = imgHeight * aspectRatio;
+      const addImageWithAspectRatio = (pdf, imgSrc, x, y, boxWidth, boxHeight, largestRatio) => {
+        return getImageDimensions(imgSrc).then(async ({ width, height, aspectRatio }) => {
+          let finalSrc = imgSrc;
+          // アスペクト比が最も大きい値より小さい場合は画像を左右に白余白を追加
+          if (aspectRatio < largestRatio) {
+            const targetWidth = height * largestRatio;
+            const canvas = document.createElement('canvas');
+            canvas.width = targetWidth;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, targetWidth, height);
+            const offsetX = (targetWidth - width) / 2;
+            ctx.drawImage(await loadImage(imgSrc), offsetX, 0, width, height);
+            finalSrc = canvas.toDataURL('image/jpeg');
           }
-          
-          // 中央揃えのためのオフセットを計算
+    
+          // ボックスのアスペクト比と最終画像のアスペクト比を比較
+          const finalDims = await getImageDimensions(finalSrc);
+          const boxAspectRatio = boxWidth / boxHeight;
+          let imgWidth, imgHeight;
+          if (finalDims.aspectRatio > boxAspectRatio) {
+            imgWidth = boxWidth;
+            imgHeight = imgWidth / finalDims.aspectRatio;
+          } else {
+            imgHeight = boxHeight;
+            imgWidth = imgHeight * finalDims.aspectRatio;
+          }
           const offsetX = (boxWidth - imgWidth) / 2;
           const offsetY = (boxHeight - imgHeight) / 2;
-          
-          // 画像を中央に配置
-          pdf.addImage(
-            imgSrc,
-            'JPEG',
-            x + offsetX,
-            y + offsetY,
-            imgWidth,
-            imgHeight
-          );
+          pdf.addImage(finalSrc, 'JPEG', x + offsetX, y + offsetY, imgWidth, imgHeight);
         });
       };
       
@@ -317,8 +329,7 @@ const OutputGenerator = () => {
         
         // 画像サイズとアスペクト比を計算
         const columnWidth = usableWidth / columns;
-        const aspectRatio = trimSettings.width / trimSettings.height;
-        const imageHeight = columnWidth / aspectRatio;
+        const imageHeight = columnWidth / largestRatio;
         const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
         
         // 画像の総数から必要な高さを計算
@@ -352,7 +363,7 @@ const OutputGenerator = () => {
             
             // アスペクト比を維持して画像を追加
             imagePromises.push(
-              addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight)
+              addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight, largestRatio)
             );
           }
         }
@@ -382,8 +393,7 @@ const OutputGenerator = () => {
         const columnWidth = usableWidth / columns;
         
         // アスペクト比を計算
-        const aspectRatio = trimSettings.width / trimSettings.height;
-        const imageHeight = columnWidth / aspectRatio;
+        const imageHeight = columnWidth / largestRatio;
         
         // 間隔を計算
         const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
@@ -422,7 +432,7 @@ const OutputGenerator = () => {
                 
                 // アスペクト比を維持して画像を追加
                 pageImagePromises.push(
-                  addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight)
+                  addImageWithAspectRatio(pdf, imgSrc, x, y, columnWidth, imageHeight, largestRatio)
                 );
               }
             }
@@ -443,6 +453,15 @@ const OutputGenerator = () => {
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  // 画像読み込みヘルパー
+  const loadImage = (src) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.src = src;
+    });
   };
 
   // 画像がない場合の表示

@@ -8,6 +8,18 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
   const { setTrimSettings } = useAppContext();
   const cropperRef = useRef(null);
   const [cropData, setCropData] = useState(null);
+  const [imageWidth, setImageWidth] = useState(null);
+
+  // 画像読み込み後に画像の横幅を取得
+  useEffect(() => {
+    if (image && image.preview) {
+      const img = new Image();
+      img.onload = () => {
+        setImageWidth(img.width);
+      };
+      img.src = image.preview;
+    }
+  }, [image]);
 
   // トリミング確定ボタンの処理
   const handleCropConfirm = () => {
@@ -15,14 +27,14 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
       const cropper = cropperRef.current.cropper;
       const data = cropper.getData();
       
-      // トリミング設定を保存（縦幅と縦方向の座標）
+      // トリミング設定を保存（縦幅と縦方向の座標のみ）
       setTrimSettings({
         height: data.height,
         yPosition: data.y,
-        width: data.width,
-        x: data.x,
+        width: imageWidth, // 元の画像の横幅を使用
+        x: 0, // 横方向の開始位置は常に0
         applied: true,
-        aspectRatio: data.width / data.height
+        aspectRatio: null // アスペクト比は固定しない
       });
 
       // トリミングプレビューの更新
@@ -37,7 +49,7 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
           トリミング範囲の指定
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          楽譜部分を四角形で選択してください。このトリミング設定が他の画像にも適用されます。
+          楽譜部分の縦の範囲のみを選択してください。横幅は自動的に画像全体が使用されます。
         </Typography>
         
         <Box sx={{ width: '100%', height: 'auto', mb: 2 }}>
@@ -52,6 +64,29 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
             background={false}
             responsive={true}
             checkOrientation={false}
+            cropBoxMovable={true}
+            cropBoxResizable={true}
+            dragMode="crop"
+            zoomable={false}
+            // 横方向のトリミングを禁止する設定
+            cropBoxData={{ width: imageWidth }}
+            ready={(e) => {
+              const cropper = e.target.cropper;
+              if (imageWidth) {
+                // 画像の横幅いっぱいに選択範囲を広げる
+                cropper.setCropBoxData({ width: imageWidth, left: 0 });
+                // 横方向のリサイズを禁止
+                const cropBox = document.querySelector('.cropper-crop-box');
+                if (cropBox) {
+                  const handles = cropBox.querySelectorAll('.cropper-line, .cropper-point');
+                  handles.forEach(handle => {
+                    if (handle.className.includes('e') || handle.className.includes('w')) {
+                      handle.style.display = 'none';
+                    }
+                  });
+                }
+              }
+            }}
           />
         </Box>
 

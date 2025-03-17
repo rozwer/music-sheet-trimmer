@@ -18,10 +18,12 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   const [originalDimensions, setOriginalDimensions] = useState({ width: 0, height: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
+  const [hasInteracted, setHasInteracted] = useState(false);
   
   // 画像のロードと初期設定
   useEffect(() => {
     if (image && trimSettings.applied) {
+      setHasInteracted(false);
       const img = new Image();
       img.onload = () => {
         setOriginalDimensions({ width: img.width, height: img.height });
@@ -75,11 +77,11 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   useEffect(() => {
     return () => {
       // コンポーネントのアンマウント時に最終設定を保存
-      if (canvasRef.current && imageObj) {
+      if (canvasRef.current && imageObj && hasInteracted) {
         autoSaveSettings(rotation, yOffset, leftTrim, rightTrim);
       }
     };
-  }, [imageIndex]);
+  }, [imageIndex, hasInteracted]);
 
   // ハイライト位置の更新
   const updateHighlightPosition = (offset, left = leftTrim, right = rightTrim) => {
@@ -169,30 +171,33 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
 
   // 画像の回転処理
   const handleRotate = (degrees) => {
+    setHasInteracted(true);
     const newRotation = (rotation + degrees) % 360;
     setRotation(newRotation);
     
     if (imageObj) {
       renderCanvas(imageObj, newRotation, yOffset, leftTrim, rightTrim);
-      // 設定変更時に自動適用
-      autoSaveSettings(newRotation, yOffset, leftTrim, rightTrim);
+      if (hasInteracted) {
+        autoSaveSettings(newRotation, yOffset, leftTrim, rightTrim);
+      }
     }
   };
 
   // Y軸オフセット（縦位置）の調整 - スライダー用
   const handleYOffsetChange = (event, newValue) => {
+    setHasInteracted(true);
     setYOffset(newValue);
     updateHighlightPosition(newValue, leftTrim, rightTrim);
     
-    if (imageObj) {
+    if (imageObj && hasInteracted) {
       renderCanvas(imageObj, rotation, newValue, leftTrim, rightTrim);
-      // 設定変更時に自動適用
       autoSaveSettings(rotation, newValue, leftTrim, rightTrim);
     }
   };
 
   // 左右トリミングの調整
   const handleLeftTrimChange = (event, newValue) => {
+    setHasInteracted(true);
     const maxAllowedLeftTrim = Math.max(0, originalDimensions.width - rightTrim - 10);
     const validatedValue = Math.min(newValue, maxAllowedLeftTrim);
     
@@ -201,14 +206,14 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     // ハイライトの更新を追加
     updateHighlightPosition(yOffset, validatedValue, rightTrim);
     
-    if (imageObj) {
+    if (imageObj && hasInteracted) {
       renderCanvas(imageObj, rotation, yOffset, validatedValue, rightTrim);
-      // 設定変更時に自動適用
       autoSaveSettings(rotation, yOffset, validatedValue, rightTrim);
     }
   };
 
   const handleRightTrimChange = (event, newValue) => {
+    setHasInteracted(true);
     const maxAllowedRightTrim = Math.max(0, originalDimensions.width - leftTrim - 10);
     const validatedValue = Math.min(newValue, maxAllowedRightTrim);
     
@@ -217,9 +222,8 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     // ハイライトの更新を追加
     updateHighlightPosition(yOffset, leftTrim, validatedValue);
     
-    if (imageObj) {
+    if (imageObj && hasInteracted) {
       renderCanvas(imageObj, rotation, yOffset, leftTrim, validatedValue);
-      // 設定変更時に自動適用
       autoSaveSettings(rotation, yOffset, leftTrim, validatedValue);
     }
   };
@@ -253,6 +257,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
 
   // ドラッグ移動の共通処理
   const processDragMove = (clientY) => {
+    setHasInteracted(true);
     const containerRect = imageContainerRef.current.getBoundingClientRect();
     const highlightRect = highlightRef.current.getBoundingClientRect();
     
@@ -278,8 +283,9 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     // 状態とキャンバスを更新
     setYOffset(newYOffset);
     renderCanvas(imageObj, rotation, newYOffset, leftTrim, rightTrim);
-    // ドラッグ操作時も自動適用
-    autoSaveSettings(rotation, newYOffset, leftTrim, rightTrim);
+    if (hasInteracted) {
+      autoSaveSettings(rotation, newYOffset, leftTrim, rightTrim);
+    }
   };
 
   // ドラッグ終了
