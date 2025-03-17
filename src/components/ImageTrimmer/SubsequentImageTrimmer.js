@@ -26,23 +26,23 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       img.onload = () => {
         setOriginalDimensions({ width: img.width, height: img.height });
         setImageObj(img);
-        
-        // 既存の設定があれば使用
+
         const existingSettings = image.settings || {};
-        if (existingSettings.leftTrim !== undefined) {
-          setLeftTrim(existingSettings.leftTrim);
-          setRightTrim(existingSettings.rightTrim);
-          setYOffset(existingSettings.yOffset || 0);
-          setRotation(existingSettings.rotation || 0);
-        }
-        
-        renderCanvas(img, existingSettings.rotation || 0, existingSettings.yOffset || 0, 
-          existingSettings.leftTrim || 0, existingSettings.rightTrim || 0);
-        
-        // ハイライト表示を初期化
+        setLeftTrim(existingSettings.leftTrim || 0);
+        setRightTrim(existingSettings.rightTrim || 0);
+        setYOffset(existingSettings.yOffset || 0);
+        setRotation(existingSettings.rotation || 0);
+
+        renderCanvas(
+          img,
+          existingSettings.rotation || 0,
+          existingSettings.yOffset || 0,
+          existingSettings.leftTrim || 0,
+          existingSettings.rightTrim || 0
+        );
         updateHighlightPosition(
-          existingSettings.yOffset || 0, 
-          existingSettings.leftTrim || 0, 
+          existingSettings.yOffset || 0,
+          existingSettings.leftTrim || 0,
           existingSettings.rightTrim || 0
         );
       };
