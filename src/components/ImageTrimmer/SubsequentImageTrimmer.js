@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
 import { Box, Typography, Button, Slider, Paper, IconButton, Grid } from '@mui/material';
 import RotateLeftIcon from '@mui/icons-material/RotateLeft';
@@ -19,42 +19,35 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartY, setDragStartY] = useState(0);
   const [hasInteracted, setHasInteracted] = useState(false);
-  
-  // 画像のロードと初期設定
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
+
+  // 状態変数の現在の値をRefで追跡（クリーンアップ関数で最新値を使用するため）
+  const stateRef = useRef({
+    rotation,
+    yOffset,
+    leftTrim,
+    rightTrim,
+    imageObj,
+    hasInteracted,
+    imageIndex
+  });
+
+  // refを最新の状態に保つ
   useEffect(() => {
-    if (image && trimSettings.applied) {
-      setHasInteracted(false);
-      const img = new Image();
-      img.onload = () => {
-        setOriginalDimensions({ width: img.width, height: img.height });
-        setImageObj(img);
+    stateRef.current = {
+      rotation,
+      yOffset,
+      leftTrim,
+      rightTrim,
+      imageObj,
+      hasInteracted,
+      imageIndex
+    };
+  }, [rotation, yOffset, leftTrim, rightTrim, imageObj, hasInteracted, imageIndex]);
 
-        const existingSettings = image.settings || {};
-        setLeftTrim(existingSettings.leftTrim || 0);
-        setRightTrim(existingSettings.rightTrim || 0);
-        setYOffset(existingSettings.yOffset || 0);
-        setRotation(existingSettings.rotation || 0);
-
-        renderCanvas(
-          img,
-          existingSettings.rotation || 0,
-          existingSettings.yOffset || 0,
-          existingSettings.leftTrim || 0,
-          existingSettings.rightTrim || 0
-        );
-        updateHighlightPosition(
-          existingSettings.yOffset || 0,
-          existingSettings.leftTrim || 0,
-          existingSettings.rightTrim || 0
-        );
-      };
-      img.src = image.preview;
-    }
-  }, [image, trimSettings]);
-
-  // 自動保存機能の実装
-  const autoSaveSettings = (newRotation, newYOffset, newLeftTrim, newRightTrim) => {
-    if (!canvasRef.current) return;
+  // 自動保存機能をuseCallbackでメモ化
+  const autoSaveSettings = useCallback((newRotation, newYOffset, newLeftTrim, newRightTrim) => {
+    if (!canvasRef.current || !stateRef.current.imageObj) return;
     
     const canvas = canvasRef.current;
     const dataUrl = canvas.toDataURL();
@@ -67,24 +60,119 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
         rotation: newRotation,
         yOffset: newYOffset,
         leftTrim: newLeftTrim,
-        rightTrim: newRightTrim
+        rightTrim: newRightTrim,
+        lastSaved: new Date().getTime() // 保存時刻を追加
       }
     };
     setImages(updatedImages);
-  };
+  }, [images, setImages, imageIndex]);
   
-  // コンポーネントのアンマウント時や変更時に設定を保存
+  // 画像のロードと初期設定
+  useEffect(() => {
+    // 画像が変更されたとき
+    if (image && trimSettings.applied) {
+      setIsInitialLoad(true);
+      setHasInteracted(false);
+      
+      const img = new Image();
+      img.onload = () => {
+        setOriginalDimensions({ width: img.width, height: img.height });
+        setImageObj(img);
+
+        // 既存の設定を読み込む
+        const existingSettings = image.settings || {};
+        const newLeftTrim = existingSettings.leftTrim || 0;
+        const newRightTrim = existingSettings.rightTrim || 0;
+        const newYOffset = existingSettings.yOffset || 0;
+        const newRotation = existingSettings.rotation || 0;
+        
+        // 状態を更新
+        setLeftTrim(newLeftTrim);
+        setRightTrim(newRightTrim);
+        setYOffset(newYOffset);
+        setRotation(newRotation);
+
+        // キャンバスとハイライトを更新
+        setTimeout(() => {
+          renderCanvas(
+            img,
+            newRotation,
+            newYOffset,
+            newLeftTrim,
+            newRightTrim
+          );
+          updateHighlightPosition(
+            newYOffset,
+            newLeftTrim,
+            newRightTrim
+          );
+          setIsInitialLoad(false);
+        }, 0);
+      };
+      img.src = image.preview;
+    }
+  }, [image, trimSettings, imageIndex]);
+
+  // 現在の画像からコンポーネントがアンマウントされるとき、または別の画像に切り替わるときに設定を保存
   useEffect(() => {
     return () => {
-      // コンポーネントのアンマウント時に最終設定を保存
-      if (canvasRef.current && imageObj && hasInteracted) {
-        autoSaveSettings(rotation, yOffset, leftTrim, rightTrim);
+      const currentState = stateRef.current;
+      if (canvasRef.current && currentState.imageObj && (currentState.hasInteracted || images[imageIndex]?.trimmedPreview === undefined)) {
+        autoSaveSettings(
+          currentState.rotation,
+          currentState.yOffset, 
+          currentState.leftTrim, 
+          currentState.rightTrim
+        );
       }
     };
-  }, [imageIndex, hasInteracted]);
+  }, [autoSaveSettings, imageIndex, images]);
+
+  // キャンバスでの描画処理
+  const renderCanvas = useCallback((img, rotation, yOffset, leftTrim, rightTrim) => {
+    if (!canvasRef.current || !img) return;
+    
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    
+    // 縦幅のみ一枚目から引き継ぎ、横幅は画像幅から左右のトリムを引いた値を使用
+    const effectiveWidth = img.width - leftTrim - rightTrim;
+    const effectiveHeight = trimSettings.height;
+    
+    // キャンバスサイズの設定
+    if (rotation === 90 || rotation === 270) {
+      canvas.width = effectiveHeight;
+      canvas.height = effectiveWidth;
+    } else {
+      canvas.width = effectiveWidth;
+      canvas.height = effectiveHeight;
+    }
+    
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // 回転とトリミングの適用
+    ctx.save();
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate((rotation * Math.PI) / 180);
+    
+    // トリミング位置の計算
+    ctx.drawImage(
+      img,
+      leftTrim,
+      trimSettings.yPosition + yOffset,
+      effectiveWidth,
+      effectiveHeight,
+      -effectiveWidth / 2,
+      -effectiveHeight / 2,
+      effectiveWidth,
+      effectiveHeight
+    );
+    
+    ctx.restore();
+  }, [trimSettings]);
 
   // ハイライト位置の更新
-  const updateHighlightPosition = (offset, left = leftTrim, right = rightTrim) => {
+  const updateHighlightPosition = useCallback((offset, left = leftTrim, right = rightTrim) => {
     if (highlightRef.current && imageContainerRef.current && imageObj) {
       const container = imageContainerRef.current;
       const containerRect = container.getBoundingClientRect();
@@ -124,75 +212,34 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       highlightRef.current.style.top = `${topPosition}px`;
       highlightRef.current.style.left = `${leftPosition}px`;
     }
-  };
+  }, [imageObj, leftTrim, rightTrim, trimSettings]);
 
-  // キャンバスでの描画処理
-  const renderCanvas = (img, rotation, yOffset, leftTrim, rightTrim) => {
-    if (!canvasRef.current || !img) return;
+  // 値変更後の処理をまとめた関数
+  const handleValuesChanged = useCallback((newRotation, newYOffset, newLeftTrim, newRightTrim, forceUpdate = false) => {
+    if (!imageObj) return;
     
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
+    renderCanvas(imageObj, newRotation, newYOffset, newLeftTrim, newRightTrim);
+    updateHighlightPosition(newYOffset, newLeftTrim, newRightTrim);
     
-    // 縦幅のみ一枚目から引き継ぎ、横幅は画像幅から左右のトリムを引いた値を使用
-    const effectiveWidth = img.width - leftTrim - rightTrim; // 一枚目のwidthは使わない
-    const effectiveHeight = trimSettings.height; // 縦幅は統一
-    
-    // キャンバスサイズの設定
-    if (rotation === 90 || rotation === 270) {
-      canvas.width = effectiveHeight;
-      canvas.height = effectiveWidth;
-    } else {
-      canvas.width = effectiveWidth;
-      canvas.height = effectiveHeight;
+    // 初期ロード時以外は自動保存
+    if (!isInitialLoad || forceUpdate) {
+      autoSaveSettings(newRotation, newYOffset, newLeftTrim, newRightTrim);
     }
-    
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // 回転とトリミングの適用
-    ctx.save();
-    ctx.translate(canvas.width / 2, canvas.height / 2);
-    ctx.rotate((rotation * Math.PI) / 180);
-    
-    // トリミング位置の計算：横方向は左端からの相対位置、縦方向は一枚目の設定+オフセット
-    ctx.drawImage(
-      img,
-      leftTrim, // 一枚目のx座標は使わず、左トリム値からスタート
-      trimSettings.yPosition + yOffset, // 縦座標は一枚目の設定を引き継ぎ
-      effectiveWidth,
-      effectiveHeight,
-      -effectiveWidth / 2,
-      -effectiveHeight / 2,
-      effectiveWidth,
-      effectiveHeight
-    );
-    
-    ctx.restore();
-  };
+  }, [imageObj, isInitialLoad, autoSaveSettings, renderCanvas, updateHighlightPosition]);
 
   // 画像の回転処理
   const handleRotate = (degrees) => {
     setHasInteracted(true);
     const newRotation = (rotation + degrees) % 360;
     setRotation(newRotation);
-    
-    if (imageObj) {
-      renderCanvas(imageObj, newRotation, yOffset, leftTrim, rightTrim);
-      if (hasInteracted) {
-        autoSaveSettings(newRotation, yOffset, leftTrim, rightTrim);
-      }
-    }
+    handleValuesChanged(newRotation, yOffset, leftTrim, rightTrim);
   };
 
   // Y軸オフセット（縦位置）の調整 - スライダー用
   const handleYOffsetChange = (event, newValue) => {
     setHasInteracted(true);
     setYOffset(newValue);
-    updateHighlightPosition(newValue, leftTrim, rightTrim);
-    
-    if (imageObj && hasInteracted) {
-      renderCanvas(imageObj, rotation, newValue, leftTrim, rightTrim);
-      autoSaveSettings(rotation, newValue, leftTrim, rightTrim);
-    }
+    handleValuesChanged(rotation, newValue, leftTrim, rightTrim);
   };
 
   // 左右トリミングの調整
@@ -202,14 +249,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     const validatedValue = Math.min(newValue, maxAllowedLeftTrim);
     
     setLeftTrim(validatedValue);
-    
-    // ハイライトの更新を追加
-    updateHighlightPosition(yOffset, validatedValue, rightTrim);
-    
-    if (imageObj && hasInteracted) {
-      renderCanvas(imageObj, rotation, yOffset, validatedValue, rightTrim);
-      autoSaveSettings(rotation, yOffset, validatedValue, rightTrim);
-    }
+    handleValuesChanged(rotation, yOffset, validatedValue, rightTrim);
   };
 
   const handleRightTrimChange = (event, newValue) => {
@@ -218,41 +258,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     const validatedValue = Math.min(newValue, maxAllowedRightTrim);
     
     setRightTrim(validatedValue);
-    
-    // ハイライトの更新を追加
-    updateHighlightPosition(yOffset, leftTrim, validatedValue);
-    
-    if (imageObj && hasInteracted) {
-      renderCanvas(imageObj, rotation, yOffset, leftTrim, validatedValue);
-      autoSaveSettings(rotation, yOffset, leftTrim, validatedValue);
-    }
-  };
-
-  // マウスドラッグ開始
-  const handleMouseDown = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-    setDragStartY(e.clientY);
-  };
-
-  // タッチドラッグ開始
-  const handleTouchStart = (e) => {
-    if (e.touches.length === 1) {
-      setIsDragging(true);
-      setDragStartY(e.touches[0].clientY);
-    }
-  };
-
-  // マウスドラッグ中
-  const handleMouseMove = (e) => {
-    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj) return;
-    processDragMove(e.clientY);
-  };
-
-  // タッチドラッグ中
-  const handleTouchMove = (e) => {
-    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj || !e.touches[0]) return;
-    processDragMove(e.touches[0].clientY);
+    handleValuesChanged(rotation, yOffset, leftTrim, validatedValue);
   };
 
   // ドラッグ移動の共通処理
@@ -282,10 +288,35 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     
     // 状態とキャンバスを更新
     setYOffset(newYOffset);
-    renderCanvas(imageObj, rotation, newYOffset, leftTrim, rightTrim);
-    if (hasInteracted) {
-      autoSaveSettings(rotation, newYOffset, leftTrim, rightTrim);
+    handleValuesChanged(rotation, newYOffset, leftTrim, rightTrim);
+  };
+
+  // 残りのドラッグハンドリングコードは変更なし...
+  // マウスドラッグ開始
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    setIsDragging(true);
+    setDragStartY(e.clientY);
+  };
+
+  // タッチドラッグ開始
+  const handleTouchStart = (e) => {
+    if (e.touches.length === 1) {
+      setIsDragging(true);
+      setDragStartY(e.touches[0].clientY);
     }
+  };
+
+  // マウスドラッグ中
+  const handleMouseMove = (e) => {
+    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj) return;
+    processDragMove(e.clientY);
+  };
+
+  // タッチドラッグ中
+  const handleTouchMove = (e) => {
+    if (!isDragging || !imageContainerRef.current || !highlightRef.current || !imageObj || !e.touches[0]) return;
+    processDragMove(e.touches[0].clientY);
   };
 
   // ドラッグ終了
@@ -326,7 +357,6 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
       }
     };
 
-    // タッチイベントでのスクロール防止設定
     document.addEventListener('touchmove', preventDefaultTouch, { passive: false });
     
     return () => {
@@ -350,6 +380,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   const minYOffset = -trimSettings.yPosition;
 
   return (
+    // UIコードは変更なし
     <Box>
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
@@ -390,7 +421,7 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
                   cursor: 'move',
                   zIndex: 10,
                   boxSizing: 'border-box',
-                  touchAction: 'none' // タッチ操作時の挙動制御
+                  touchAction: 'none'
                 }}
                 onMouseDown={handleMouseDown}
                 onTouchStart={handleTouchStart}

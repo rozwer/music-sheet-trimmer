@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useAppContext } from '../../contexts/AppContext';
 import { 
   Box, Typography, Paper, FormControl, FormLabel, RadioGroup, FormControlLabel, Radio,
-  Select, MenuItem, TextField, InputLabel, Slider, Grid, Divider
+  Select, MenuItem, TextField, InputLabel, Grid, Divider
 } from '@mui/material';
 
 // 用紙サイズ定義 (mm単位)
@@ -11,9 +11,6 @@ const paperSizes = {
   a4: { width: 210, height: 297 },
   a5: { width: 148, height: 210 }
 };
-
-// ピクセルに変換 (72 DPI)
-const mmToPixel = (mm) => Math.round(mm * 2.83465);
 
 const LayoutSettings = () => {
   const { images, layoutSettings, setLayoutSettings } = useAppContext();
@@ -71,28 +68,15 @@ const LayoutSettings = () => {
     });
   };
 
-  // プレビューのサイズ計算
-  const getPreviewSize = () => {
-    let width, height;
-    
-    if (layoutSettings.outputSize === 'infinite') {
-      width = 210; // A4幅相当
-      height = 'auto'; // 高さは自動
-    } else if (layoutSettings.outputSize === 'custom') {
-      width = layoutSettings.customSize.width;
-      height = layoutSettings.customSize.height;
-    } else {
-      const size = paperSizes[layoutSettings.outputSize];
-      width = size.width;
-      height = size.height;
-    }
-    
-    // 縦向き/横向きの調整
-    if (layoutSettings.orientation === 'landscape' && layoutSettings.outputSize !== 'infinite') {
-      [width, height] = [height, width];
-    }
-    
-    return { width, height };
+  // タイトル情報の変更
+  const handleTitleInfoChange = (field, value) => {
+    setLayoutSettings({
+      ...layoutSettings,
+      titleInfo: {
+        ...(layoutSettings.titleInfo || {}),
+        [field]: value
+      }
+    });
   };
 
   // 画像がなければ案内メッセージを表示
@@ -201,7 +185,7 @@ const LayoutSettings = () => {
                 onChange={handleDirectionChange}
               >
                 <FormControlLabel value="horizontal" control={<Radio />} label="横優先（左→右）" />
-                <FormControlLabel value="vertical" control={<Radio />} label="縦優先（上→下）" />
+                
               </RadioGroup>
             </FormControl>
             
@@ -242,31 +226,22 @@ const LayoutSettings = () => {
         <Grid item xs={12} md={6}>
           <Paper sx={{ p: 2, overflow: 'auto', height: '100%' }}>
             <Typography variant="subtitle1" gutterBottom>
-              レイアウトプレビュー
+              タイトル情報
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              設定した内容を反映したレイアウトイメージです
+              PDFに表示されるタイトルを設定できます
             </Typography>
             
-            <Box sx={{ mt: 2, textAlign: 'center' }}>
-              <Box
-                sx={{
-                  border: '1px solid #ccc',
-                  background: '#f5f5f5',
-                  display: 'inline-flex',
-                  flexWrap: 'wrap',
-                  justifyContent: 'center',
-                  alignItems: 'flex-start',
-                  padding: '10px',
-                  maxWidth: '100%',
-                  overflow: 'auto',
-                }}
-              >
-                <Typography>
-                  プレビューは出力ステップで表示されます
-                </Typography>
-                {/* プレビュー表示はOutputGeneratorで実装 */}
-              </Box>
+            <Box sx={{ mt: 3 }}>
+              <TextField
+                fullWidth
+                label="タイトル"
+                variant="outlined"
+                margin="normal"
+                value={(layoutSettings.titleInfo?.title || '')}
+                onChange={(e) => handleTitleInfoChange('title', e.target.value)}
+                placeholder="曲のタイトルや作品名"
+              />
             </Box>
             
             <Typography variant="body2" sx={{ mt: 2 }}>

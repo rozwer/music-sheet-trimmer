@@ -21,6 +21,10 @@ const OutputGenerator = () => {
   const [previewImages, setPreviewImages] = useState([]);
   const outputContainerRef = useRef(null);
   
+  // タイトル関連の設定
+  const hasTitle = layoutSettings.titleInfo?.title && layoutSettings.titleInfo.title.trim() !== '';
+  const titleHeight = hasTitle ? 15 : 0; // タイトル表示用の高さ（mm単位）
+  
   // プレビュー用の画像配列を生成部分を修正
   useEffect(() => {
     if (images.length > 0 && trimSettings.applied) {
@@ -83,7 +87,7 @@ const OutputGenerator = () => {
       // 列数と画像数から必要な高さを概算
       const rows = Math.ceil(images.length / layoutSettings.columns);
       const imageHeight = trimSettings.height * (paperSizes.a4.width / layoutSettings.columns / trimSettings.width);
-      height = imageHeight * rows * 1.1; // 10%余裕を持たせる
+      height = imageHeight * rows * 1.1 + titleHeight; // タイトル高さを追加
     } 
     else if (layoutSettings.outputSize === 'custom') {
       width = layoutSettings.customSize.width;
@@ -180,63 +184,113 @@ const OutputGenerator = () => {
         width: 'auto', // 横幅を自動調整
         height: 'auto' // 高さを自動調整
       },
-      spacing: spacing
+      spacing: spacing,
+      titleStyle: {
+        fontSize: '14pt',
+        fontWeight: 'bold',
+        marginBottom: '12px',
+        textAlign: 'center',
+        width: '100%'
+      }
     };
   };
 
-  // レイアウト配置方法を修正（常に上下優先レイアウト）
+  // レイアウト配置方法を修正（タイトル追加）
   const arrangeItems = () => {
     if (images.length === 0 || !trimSettings.applied) {
       return null;
     }
     
     const layout = getLayoutStyle();
-    const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
-    
-    // 画像間の余白をなくす
+    const columns = parseInt(layoutSettings.columns) || 1; // 列数
     const noSpacingStyle = {
       ...layout.itemStyle,
       margin: '0',  // 余白をゼロに
       boxSizing: 'border-box'
     };
-    
+
     return (
       <Box 
         ref={outputContainerRef}
         style={layout.containerStyle} 
         sx={{ 
-          display: 'flex', 
-          flexWrap: 'nowrap', 
-          flexDirection: 'row',
-          alignContent: 'flex-start',
-          alignItems: 'flex-start',
-          gap: calculateSpacing(1) + 'px',  // 必要な場合のみ間隔を追加
+          display: 'flex',
+          flexDirection: 'column'
         }}
       >
-        {/* 常に上下優先レイアウト（列ごとに並べる） */}
-        {Array.from({length: columns}, (_, colIndex) => (
-          <Box 
-            key={`col-${colIndex}`} 
-            sx={{ 
-              display: 'flex', 
-              flexDirection: 'column',
-              gap: calculateSpacing(1) + 'px',
-            }}
+        {/* タイトル表示部分 */}
+        {hasTitle && (
+          <Typography 
+            variant="h5" 
+            component="h2" 
+            sx={layout.titleStyle}
           >
-            {previewImages
-              .filter((_, imgIndex) => imgIndex % columns === colIndex)
-              .map((img, index) => (
-                <Box key={`img-${colIndex}-${index}`} style={noSpacingStyle} className="image-container">
-                  <img 
-                    src={img} 
-                    alt={`画像 ${colIndex * Math.ceil(previewImages.length / columns) + index + 1}`} 
-                    style={layout.imageStyle} 
-                  />
-                </Box>
-              ))
-            }
+            {layoutSettings.titleInfo.title}
+          </Typography>
+        )}
+        
+        {/* 画像レイアウト部分 */}
+        {layoutSettings.arrangement === 'horizontal' ? ( 
+          // 横優先配置：行ごとに画像を配置
+          Array.from({ length: Math.ceil(previewImages.length / columns) }, (_, rowIndex) => {
+            const rowImages = previewImages.slice(rowIndex * columns, rowIndex * columns + columns);
+            return (
+              <Box 
+                key={`row-${rowIndex}`} 
+                sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'row',
+                  gap: calculateSpacing(1) + 'px',
+                  mb: '4px'
+                }}
+              >
+                {rowImages.map((img, index) => (
+                  <Box key={`img-row-${rowIndex}-${index}`} style={noSpacingStyle} className="image-container">
+                    <img 
+                      src={img} 
+                      alt={`画像 ${rowIndex * columns + index + 1}`} 
+                      style={layout.imageStyle} 
+                    />
+                  </Box>
+                ))}
+              </Box>
+            );
+          })
+        ) : (
+          // 縦優先配置（既存コード：列ごとに並べる）
+          <Box sx={{ 
+            display: 'flex', 
+            flexWrap: 'nowrap', 
+            flexDirection: 'row',
+            alignContent: 'flex-start',
+            alignItems: 'flex-start',
+            gap: calculateSpacing(1) + 'px'
+          }}>
+            {Array.from({length: columns}, (_, colIndex) => (
+              <Box 
+                key={`col-${colIndex}`} 
+                sx={{ 
+                  display: 'flex', 
+                  flexDirection: 'column',
+                  gap: calculateSpacing(1) + 'px'
+                }}
+              >
+                {previewImages
+                  .filter((_, imgIndex) => imgIndex % columns === colIndex)
+                  .map((img, index) => (
+                    <Box key={`img-${colIndex}-${index}`} style={noSpacingStyle} className="image-container">
+                      <img 
+                        src={img} 
+                        alt={`画像 ${colIndex * Math.ceil(previewImages.length / columns) + index + 1}`} 
+                        style={layout.imageStyle} 
+                      />
+                    </Box>
+                  ))
+                }
+              </Box>
+            ))}
           </Box>
-        ))}
+        )}
       </Box>
     );
   };
@@ -313,6 +367,22 @@ const OutputGenerator = () => {
         });
       };
       
+      // タイトルを追加する関数
+      const addTitleToPDF = (pdf, title, x, y, width) => {
+        if (!title || title.trim() === '') return;
+        
+        pdf.setFontSize(14);
+        pdf.setFont(undefined, 'bold');
+        
+        // センタリング用にテキスト幅を取得
+        const textWidth = pdf.getStringUnitWidth(title) * pdf.getFontSize() / pdf.internal.scaleFactor;
+        const textX = x + (width - textWidth) / 2;
+        
+        pdf.text(title, textX, y + 10);
+        pdf.setFont(undefined, 'normal');
+        pdf.setFontSize(12);
+      };
+      
       // 無限長の場合は1つの長いページとして出力
       if (layoutSettings.outputSize === 'infinite') {
         // 基準となる幅をA4に設定
@@ -335,7 +405,8 @@ const OutputGenerator = () => {
         // 画像の総数から必要な高さを計算
         const totalImages = previewImages.length;
         const imagesPerColumn = Math.ceil(totalImages / columns);
-        const totalHeight = (imagesPerColumn * imageHeight) + ((imagesPerColumn - 1) * spacing) + (margin * 2);
+        const contentHeight = (imagesPerColumn * imageHeight) + ((imagesPerColumn - 1) * spacing);
+        const totalHeight = contentHeight + titleHeight + (margin * 2); // タイトル分の高さを追加
         
         // カスタムサイズの長いページを持つPDFを作成
         pdf = new jsPDF({
@@ -344,8 +415,16 @@ const OutputGenerator = () => {
           format: [baseWidth, totalHeight]
         });
         
+        // タイトルの追加
+        if (hasTitle) {
+          addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
+        }
+        
         // すべての画像の配置を待つために Promise の配列を作成
         const imagePromises = [];
+        
+        // タイトル分のオフセットを計算
+        const titleOffset = hasTitle ? titleHeight : 0;
         
         // 列ごとに画像を配置（上下優先レイアウト）
         for (let col = 0; col < columns; col++) {
@@ -359,7 +438,7 @@ const OutputGenerator = () => {
           for (let row = 0; row < colImages.length; row++) {
             const imgSrc = colImages[row];
             const x = margin + col * columnWidth;
-            const y = margin + row * (imageHeight + spacing);
+            const y = margin + titleOffset + row * (imageHeight + spacing);
             
             // アスペクト比を維持して画像を追加
             imagePromises.push(
@@ -398,8 +477,11 @@ const OutputGenerator = () => {
         // 間隔を計算
         const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
         
-        // 1ページに入る行数を計算
-        const usableHeight = pdfHeight - (margin * 2);
+        // タイトル分のオフセットを計算
+        const titleOffset = hasTitle ? titleHeight : 0;
+        
+        // 1ページに入る行数を計算（タイトル分を考慮）
+        const usableHeight = pdfHeight - (margin * 2) - titleOffset;
         const rowsPerPage = Math.floor(usableHeight / (imageHeight + spacing));
         const imagesPerPage = rowsPerPage * columns;
         
@@ -413,12 +495,20 @@ const OutputGenerator = () => {
             pdf.addPage();
           }
           
+          // タイトルの追加（最初のページのみ）
+          if (pageIndex === 0 && hasTitle) {
+            addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
+          }
+          
           // すべての画像の配置を待つために Promise の配列を作成
           const pageImagePromises = [];
           
           // このページに配置する画像のインデックス範囲
           const startIndex = pageIndex * imagesPerPage;
           const endIndex = Math.min((pageIndex + 1) * imagesPerPage, previewImages.length);
+          
+          // タイトル分のオフセット（最初のページのみ適用）
+          const pageOffset = pageIndex === 0 ? titleOffset : 0;
           
           // 常に上下優先レイアウトで配置
           for (let col = 0; col < columns; col++) {
@@ -428,7 +518,7 @@ const OutputGenerator = () => {
               if (imageIndex < endIndex && imageIndex < previewImages.length) {
                 const imgSrc = previewImages[imageIndex];
                 const x = margin + col * columnWidth;
-                const y = margin + i * (imageHeight + spacing);
+                const y = margin + pageOffset + i * (imageHeight + spacing);
                 
                 // アスペクト比を維持して画像を追加
                 pageImagePromises.push(
@@ -443,9 +533,13 @@ const OutputGenerator = () => {
         }
       }
       
-      // ダウンロード
+      // ダウンロード - ファイル名にタイトルを含める
+      const fileName = hasTitle 
+        ? `楽譜_${layoutSettings.titleInfo.title}.pdf`
+        : '楽譜レイアウト.pdf';
+        
       if (pdf) {
-        pdf.save('楽譜レイアウト.pdf');
+        pdf.save(fileName);
       }
     } catch (err) {
       console.error('PDF生成エラー:', err);
@@ -505,6 +599,12 @@ const OutputGenerator = () => {
               出力設定
             </Typography>
             
+            {hasTitle && (
+              <Typography variant="body1" sx={{ mt: 2, fontWeight: 'medium' }}>
+                タイトル: {layoutSettings.titleInfo.title}
+              </Typography>
+            )}
+            
             <Box sx={{ mt: 3 }}>
               <Button
                 variant="contained"
@@ -529,7 +629,7 @@ const OutputGenerator = () => {
             <Box sx={{ 
               mt: 2, 
               overflow: 'auto', 
-              maxHeight: '700px', // 高さを拡大
+              maxHeight: '700px',
               border: '1px solid #eee',
               overflowX: 'auto',
               overflowY: 'auto'
