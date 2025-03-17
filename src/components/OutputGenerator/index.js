@@ -202,13 +202,15 @@ const OutputGenerator = () => {
     }
     
     const layout = getLayoutStyle();
-    const columns = parseInt(layoutSettings.columns) || 1; // 列数
+    const columns = parseInt(layoutSettings.columns) || 1; // 数値型に変換して確実に値を取得
+    
+    // 画像間の余白をなくす
     const noSpacingStyle = {
       ...layout.itemStyle,
       margin: '0',  // 余白をゼロに
       boxSizing: 'border-box'
     };
-
+    
     return (
       <Box 
         ref={outputContainerRef}
@@ -230,67 +232,39 @@ const OutputGenerator = () => {
         )}
         
         {/* 画像レイアウト部分 */}
-        {layoutSettings.arrangement === 'horizontal' ? ( 
-          // 横優先配置：行ごとに画像を配置
-          Array.from({ length: Math.ceil(previewImages.length / columns) }, (_, rowIndex) => {
-            const rowImages = previewImages.slice(rowIndex * columns, rowIndex * columns + columns);
-            return (
-              <Box 
-                key={`row-${rowIndex}`} 
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'row',
-                  gap: calculateSpacing(1) + 'px',
-                  mb: '4px'
-                }}
-              >
-                {rowImages.map((img, index) => (
-                  <Box key={`img-row-${rowIndex}-${index}`} style={noSpacingStyle} className="image-container">
+        <Box sx={{ 
+          display: 'flex', 
+          flexWrap: 'nowrap', 
+          flexDirection: 'row',
+          alignContent: 'flex-start',
+          alignItems: 'flex-start',
+          gap: calculateSpacing(1) + 'px',
+        }}>
+          {/* 常に上下優先レイアウト（列ごとに並べる） */}
+          {Array.from({length: columns}, (_, colIndex) => (
+            <Box 
+              key={`col-${colIndex}`} 
+              sx={{ 
+                display: 'flex', 
+                flexDirection: 'column',
+                gap: calculateSpacing(1) + 'px',
+              }}
+            >
+              {previewImages
+                .filter((_, imgIndex) => imgIndex % columns === colIndex)
+                .map((img, index) => (
+                  <Box key={`img-${colIndex}-${index}`} style={noSpacingStyle} className="image-container">
                     <img 
                       src={img} 
-                      alt={`画像 ${rowIndex * columns + index + 1}`} 
+                      alt={`画像 ${colIndex * Math.ceil(previewImages.length / columns) + index + 1}`} 
                       style={layout.imageStyle} 
                     />
                   </Box>
-                ))}
-              </Box>
-            );
-          })
-        ) : (
-          // 縦優先配置（既存コード：列ごとに並べる）
-          <Box sx={{ 
-            display: 'flex', 
-            flexWrap: 'nowrap', 
-            flexDirection: 'row',
-            alignContent: 'flex-start',
-            alignItems: 'flex-start',
-            gap: calculateSpacing(1) + 'px'
-          }}>
-            {Array.from({length: columns}, (_, colIndex) => (
-              <Box 
-                key={`col-${colIndex}`} 
-                sx={{ 
-                  display: 'flex', 
-                  flexDirection: 'column',
-                  gap: calculateSpacing(1) + 'px'
-                }}
-              >
-                {previewImages
-                  .filter((_, imgIndex) => imgIndex % columns === colIndex)
-                  .map((img, index) => (
-                    <Box key={`img-${colIndex}-${index}`} style={noSpacingStyle} className="image-container">
-                      <img 
-                        src={img} 
-                        alt={`画像 ${colIndex * Math.ceil(previewImages.length / columns) + index + 1}`} 
-                        style={layout.imageStyle} 
-                      />
-                    </Box>
-                  ))
-                }
-              </Box>
-            ))}
-          </Box>
-        )}
+                ))
+              }
+            </Box>
+          ))}
+        </Box>
       </Box>
     );
   };
@@ -345,7 +319,7 @@ const OutputGenerator = () => {
             const ctx = canvas.getContext('2d');
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, targetWidth, height);
-            const offsetX = (targetWidth - width) / 2;
+            const offsetX = 0; // 左寄せのため、余白は右側に
             ctx.drawImage(await loadImage(imgSrc), offsetX, 0, width, height);
             finalSrc = canvas.toDataURL('image/jpeg');
           }
@@ -361,7 +335,7 @@ const OutputGenerator = () => {
             imgHeight = boxHeight;
             imgWidth = imgHeight * finalDims.aspectRatio;
           }
-          const offsetX = (boxWidth - imgWidth) / 2;
+          const offsetX = 0; // 左寄せに修正（空白は右側に補填）
           const offsetY = (boxHeight - imgHeight) / 2;
           pdf.addImage(finalSrc, 'JPEG', x + offsetX, y + offsetY, imgWidth, imgHeight);
         });

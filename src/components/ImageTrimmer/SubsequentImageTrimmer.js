@@ -235,31 +235,53 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
     handleValuesChanged(newRotation, yOffset, leftTrim, rightTrim);
   };
 
-  // Y軸オフセット（縦位置）の調整 - スライダー用
-  const handleYOffsetChange = (event, newValue) => {
-    setHasInteracted(true);
-    setYOffset(newValue);
-    handleValuesChanged(rotation, newValue, leftTrim, rightTrim);
-  };
+    // Y軸オフセット（縦位置）の調整 - スライダー用
+    const handleYOffsetChange = (event, newValue) => {
+      setHasInteracted(true);
+      setYOffset(newValue);
+      
+      // スライダードラッグ中は軽量な更新のみ
+      if (event.type === 'mouseup' || event.type === 'touchend') {
+        handleValuesChanged(rotation, newValue, leftTrim, rightTrim);
+      } else {
+        // ドラッグ中は自動保存なしで軽量更新
+        renderCanvas(imageObj, rotation, newValue, leftTrim, rightTrim);
+        updateHighlightPosition(newValue, leftTrim, rightTrim);
+      }
+    };
 
   // 左右トリミングの調整
-  const handleLeftTrimChange = (event, newValue) => {
-    setHasInteracted(true);
-    const maxAllowedLeftTrim = Math.max(0, originalDimensions.width - rightTrim - 10);
-    const validatedValue = Math.min(newValue, maxAllowedLeftTrim);
-    
-    setLeftTrim(validatedValue);
+const handleLeftTrimChange = (event, newValue) => {
+  setHasInteracted(true);
+  const maxAllowedLeftTrim = Math.max(0, originalDimensions.width - rightTrim - 10);
+  const validatedValue = Math.min(newValue, maxAllowedLeftTrim);
+  
+  setLeftTrim(validatedValue);
+  // スライダードラッグ中は軽量な更新のみ
+  if (event.type === 'mouseup' || event.type === 'touchend') {
     handleValuesChanged(rotation, yOffset, validatedValue, rightTrim);
-  };
+  } else {
+    // ドラッグ中は自動保存なしで軽量更新
+    renderCanvas(imageObj, rotation, yOffset, validatedValue, rightTrim);
+    updateHighlightPosition(yOffset, validatedValue, rightTrim);
+  }
+};
 
-  const handleRightTrimChange = (event, newValue) => {
-    setHasInteracted(true);
-    const maxAllowedRightTrim = Math.max(0, originalDimensions.width - leftTrim - 10);
-    const validatedValue = Math.min(newValue, maxAllowedRightTrim);
-    
-    setRightTrim(validatedValue);
+const handleRightTrimChange = (event, newValue) => {
+  setHasInteracted(true);
+  const maxAllowedRightTrim = Math.max(0, originalDimensions.width - leftTrim - 10);
+  const validatedValue = Math.min(newValue, maxAllowedRightTrim);
+  
+  setRightTrim(validatedValue);
+  // スライダードラッグ中は軽量な更新のみ
+  if (event.type === 'mouseup' || event.type === 'touchend') {
     handleValuesChanged(rotation, yOffset, leftTrim, validatedValue);
-  };
+  } else {
+    // ドラッグ中は自動保存なしで軽量更新
+    renderCanvas(imageObj, rotation, yOffset, leftTrim, validatedValue);
+    updateHighlightPosition(yOffset, leftTrim, validatedValue);
+  }
+};
 
   // ドラッグ移動の共通処理
   const processDragMove = (clientY) => {
@@ -447,19 +469,31 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
         </Grid>
 
         <Box sx={{ mt: 3 }}>
-          <Typography id="y-offset-slider" gutterBottom>
-            縦位置調整（スライダー）
-          </Typography>
-          <Slider
-            aria-labelledby="y-offset-slider"
-            value={yOffset}
-            onChange={handleYOffsetChange}
-            min={minYOffset}
-            max={maxYOffset}
-            step={1}
-            valueLabelDisplay="auto"
-          />
-        </Box>
+  <Typography id="y-offset-slider" gutterBottom>
+    縦位置調整（スライダー）
+  </Typography>
+  <Slider
+    aria-labelledby="y-offset-slider"
+    value={yOffset}
+    onChange={(e, value) => {
+      // スライダードラッグ中は状態更新と軽量な描画のみ
+      setYOffset(value);
+      if (imageObj) {
+        renderCanvas(imageObj, rotation, value, leftTrim, rightTrim);
+        updateHighlightPosition(value, leftTrim, rightTrim);
+      }
+    }}
+    onChangeCommitted={(e, value) => {
+      // スライダー操作完了時に重い処理を実行
+      setHasInteracted(true);
+      handleValuesChanged(rotation, value, leftTrim, rightTrim);
+    }}
+    min={minYOffset}
+    max={maxYOffset}
+    step={1}
+    valueLabelDisplay="auto"
+  />
+</Box>
 
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2, mt: 3 }}>
           <Typography id="rotation-label" sx={{ mr: 2 }}>回転:</Typography>
