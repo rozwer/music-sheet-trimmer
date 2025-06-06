@@ -55,16 +55,15 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
         // 全体を白で塗りつぶし
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // 選択部分のみを描画
+          // 選択部分のみを描画（左詰め処理）
         const img = new Image();
         img.onload = () => {
-          // トリミング対象部分のみを描画
+          // 左詰め処理: 選択された内容を左端に移動し、右側に白い余白を補填
           ctx.drawImage(
             img,
             data.x, data.y,  // ソース画像上の開始位置
             data.width, data.height,  // ソース画像上の切り取りサイズ
-            data.x, data.y,  // キャンバス上の描画位置（元の位置と同じ）
+            0, data.y,  // キャンバス上の描画位置（X座標を0に変更して左詰め）
             data.width, data.height  // キャンバス上の描画サイズ
           );
           
@@ -117,10 +116,10 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
           トリミング範囲の指定
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        </Typography>        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           楽譜部分の範囲を選択してください。
           {!allowHorizontalTrim && ' 他の画像には縦方向のトリミングのみが適用されます。'}
+          {allowHorizontalTrim && ' 横方向のトリミングを有効にすると、選択された内容を左詰めにして右側に白い余白を補填します。'}
         </Typography>
         
         <FormControlLabel 
@@ -185,10 +184,9 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
       {cropData && (
         <Paper sx={{ p: 2 }}>
           <Typography variant="subtitle1" gutterBottom>
-            トリミングプレビュー
-            {allowHorizontalTrim && (
+            トリミングプレビュー            {allowHorizontalTrim && (
               <Typography variant="caption" component="span" sx={{ ml: 2, color: 'text.secondary' }}>
-                （横方向のトリミングはこの画像のみに適用されます）
+                （左詰め処理適用済み）
               </Typography>
             )}
           </Typography>

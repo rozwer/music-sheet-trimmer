@@ -4,7 +4,7 @@ import {
   Box, Typography, Paper, Button, Grid, CircularProgress, Alert
 } from '@mui/material';
 import { jsPDF } from 'jspdf';
-import DownloadIcon from '@mui/icons-material/Download';
+import html2canvas from 'html2canvas';
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf';
 
 // 用紙サイズ定義 (mm単位)
@@ -184,13 +184,13 @@ const OutputGenerator = () => {
         width: 'auto', // 横幅を自動調整
         height: 'auto' // 高さを自動調整
       },
-      spacing: spacing,
-      titleStyle: {
+      spacing: spacing,      titleStyle: {
         fontSize: '14pt',
         fontWeight: 'bold',
         marginBottom: '12px',
         textAlign: 'center',
-        width: '100%'
+        width: '100%',
+        fontFamily: "'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo UI', 'MS Gothic', sans-serif"
       }
     };
   };
@@ -340,21 +340,67 @@ const OutputGenerator = () => {
           pdf.addImage(finalSrc, 'JPEG', x + offsetX, y + offsetY, imgWidth, imgHeight);
         });
       };
-      
-      // タイトルを追加する関数
-      const addTitleToPDF = (pdf, title, x, y, width) => {
+        // タイトルを追加する関数（日本語フォント対応）
+      const addTitleToPDF = async (pdf, title, x, y, width) => {
         if (!title || title.trim() === '') return;
         
-        pdf.setFontSize(14);
-        pdf.setFont(undefined, 'bold');
-        
-        // センタリング用にテキスト幅を取得
-        const textWidth = pdf.getStringUnitWidth(title) * pdf.getFontSize() / pdf.internal.scaleFactor;
-        const textX = x + (width - textWidth) / 2;
-        
-        pdf.text(title, textX, y + 10);
-        pdf.setFont(undefined, 'normal');
-        pdf.setFontSize(12);
+        try {
+          // HTML要素を作成してタイトルをレンダリング
+          const titleElement = document.createElement('div');
+          titleElement.style.cssText = `
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic UI', 'Meiryo UI', 'MS Gothic', sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            text-align: center;
+            color: black;
+            background: white;
+            padding: 10px;
+            width: ${width}mm;
+            box-sizing: border-box;
+            line-height: 1.2;
+          `;
+          titleElement.textContent = title;
+          
+          // 一時的にDOMに追加
+          document.body.appendChild(titleElement);
+          
+          // html2canvasでキャプチャ
+          const canvas = await html2canvas(titleElement, {
+            backgroundColor: 'white',
+            scale: 2, // 高解像度
+            useCORS: true,
+            allowTaint: true
+          });
+          
+          // DOMから削除
+          document.body.removeChild(titleElement);
+          
+          // キャンバスをPDFに追加
+          const imgData = canvas.toDataURL('image/png');
+          const imgWidth = width;
+          const imgHeight = (canvas.height / canvas.width) * width;
+          
+          pdf.addImage(imgData, 'PNG', x, y, imgWidth, imgHeight);
+          
+          // タイトル分の高さを返す
+          return imgHeight + 5; // 5mmのマージンを追加
+        } catch (error) {
+          console.warn('html2canvasでのタイトル描画に失敗、フォールバックを使用:', error);
+          
+          // フォールバック: jsPDFのデフォルトフォントを使用
+          pdf.setFontSize(14);
+          pdf.setFont('helvetica', 'bold');
+          
+          // センタリング用にテキスト幅を取得
+          const textWidth = pdf.getStringUnitWidth(title) * pdf.getFontSize() / pdf.internal.scaleFactor;
+          const textX = x + (width - textWidth) / 2;
+          
+          pdf.text(title, textX, y + 10);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(12);
+          
+          return 15; // デフォルトのタイトル高さ
+        }
       };
       
       // 無限長の場合は1つの長いページとして出力
@@ -388,17 +434,16 @@ const OutputGenerator = () => {
           unit: 'mm',
           format: [baseWidth, totalHeight]
         });
-        
-        // タイトルの追加
+          // タイトルの追加
+        let actualTitleHeight = 0;
         if (hasTitle) {
-          addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
+          actualTitleHeight = await addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
         }
-        
-        // すべての画像の配置を待つために Promise の配列を作成
+          // すべての画像の配置を待つために Promise の配列を作成
         const imagePromises = [];
         
         // タイトル分のオフセットを計算
-        const titleOffset = hasTitle ? titleHeight : 0;
+        const titleOffset = actualTitleHeight;
         
         // 列ごとに画像を配置（上下優先レイアウト）
         for (let col = 0; col < columns; col++) {
@@ -447,15 +492,14 @@ const OutputGenerator = () => {
         
         // アスペクト比を計算
         const imageHeight = columnWidth / largestRatio;
-        
-        // 間隔を計算
+          // 間隔を計算
         const spacing = layoutSettings.spacing === '0' ? 0 : calculateSpacing(imageHeight);
         
         // タイトル分のオフセットを計算
-        const titleOffset = hasTitle ? titleHeight : 0;
+        let actualTitleHeight = 0;
         
         // 1ページに入る行数を計算（タイトル分を考慮）
-        const usableHeight = pdfHeight - (margin * 2) - titleOffset;
+        const usableHeight = pdfHeight - (margin * 2) - titleHeight;
         const rowsPerPage = Math.floor(usableHeight / (imageHeight + spacing));
         const imagesPerPage = rowsPerPage * columns;
         
@@ -471,18 +515,17 @@ const OutputGenerator = () => {
           
           // タイトルの追加（最初のページのみ）
           if (pageIndex === 0 && hasTitle) {
-            addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
+            actualTitleHeight = await addTitleToPDF(pdf, layoutSettings.titleInfo.title, margin, margin, usableWidth);
           }
           
           // すべての画像の配置を待つために Promise の配列を作成
           const pageImagePromises = [];
-          
-          // このページに配置する画像のインデックス範囲
+            // このページに配置する画像のインデックス範囲
           const startIndex = pageIndex * imagesPerPage;
           const endIndex = Math.min((pageIndex + 1) * imagesPerPage, previewImages.length);
           
           // タイトル分のオフセット（最初のページのみ適用）
-          const pageOffset = pageIndex === 0 ? titleOffset : 0;
+          const pageOffset = pageIndex === 0 ? actualTitleHeight : 0;
           
           // 常に上下優先レイアウトで配置
           for (let col = 0; col < columns; col++) {

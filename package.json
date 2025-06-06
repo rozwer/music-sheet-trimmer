@@ -13,6 +13,7 @@
     "@testing-library/user-event": "^13.5.0",
     "cropperjs": "^2.0.0",
     "html-to-image": "^1.11.13",
+    "html2canvas": "^1.4.1",
     "jspdf": "^3.0.0",
     "react": "^19.0.0",
     "react-cropper": "^2.3.3",
