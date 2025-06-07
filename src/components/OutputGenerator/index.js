@@ -367,7 +367,7 @@ const OutputGenerator = () => {
           // html2canvasでキャプチャ
           const canvas = await html2canvas(titleElement, {
             backgroundColor: 'white',
-            scale: 2, // 高解像度
+            scale: 8, // 最大解像度
             useCORS: true,
             allowTaint: true
           });
