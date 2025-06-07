@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
-import { Box, Typography, Button, Slider, Paper, IconButton, Grid } from '@mui/material';
+import { Box, Typography, Button, Slider, Paper, IconButton, Grid, Tooltip } from '@mui/material';
 import RotateLeftIcon from '@mui/icons-material/RotateLeft';
 import RotateRightIcon from '@mui/icons-material/RotateRight';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   const { images, setImages } = useAppContext();
@@ -282,7 +284,6 @@ const handleRightTrimChange = (event, newValue) => {
     updateHighlightPosition(yOffset, leftTrim, validatedValue);
   }
 };
-
   // ドラッグ移動の共通処理
   const processDragMove = (clientY) => {
     setHasInteracted(true);
@@ -311,6 +312,29 @@ const handleRightTrimChange = (event, newValue) => {
     // 状態とキャンバスを更新
     setYOffset(newYOffset);
     handleValuesChanged(rotation, newYOffset, leftTrim, rightTrim);
+  };
+
+  // 画像を複製する
+  const duplicateImage = () => {
+    const imageToDuplicate = images[imageIndex];
+    const duplicatedImage = {
+      ...imageToDuplicate,
+      name: `${imageToDuplicate.name || 'image'} (複製)`,
+      id: `${imageToDuplicate.id || Date.now()}_copy`
+    };
+    
+    const updatedImages = [...images];
+    updatedImages.splice(imageIndex + 1, 0, duplicatedImage);
+    setImages(updatedImages);
+  };
+
+  // 画像を削除する
+  const deleteImage = () => {
+    if (images.length <= 1) return; // 最後の画像は削除不可
+    
+    const updatedImages = [...images];
+    updatedImages.splice(imageIndex, 1);
+    setImages(updatedImages);
   };
 
   // 残りのドラッグハンドリングコードは変更なし...
@@ -400,10 +424,40 @@ const handleRightTrimChange = (event, newValue) => {
   // 最大オフセット値の計算
   const maxYOffset = imageObj ? imageObj.height - trimSettings.height - trimSettings.yPosition : 100;
   const minYOffset = -trimSettings.yPosition;
-
   return (
     // UIコードは変更なし
     <Box>
+      {/* 画像操作部分 */}
+      <Paper sx={{ p: 2, mb: 2, bgcolor: '#f8f9fa' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            画像操作
+          </Typography>
+          <Box>
+            <Tooltip title="画像を複製">
+              <IconButton 
+                onClick={duplicateImage}
+                size="small"
+                sx={{ mr: 1 }}
+              >
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="画像を削除">
+              <IconButton 
+                onClick={deleteImage}
+                disabled={images.length <= 1}
+                size="small"
+                color="error"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+      </Paper>
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
           トリミング調整（変更は自動保存されます）

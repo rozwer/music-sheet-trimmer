@@ -21,6 +21,13 @@ const SubsequentImagesTrimmer = () => {
   const [selectedTabIndex, setSelectedTabIndex] = useState(0);
   const [previewsExpanded, setPreviewsExpanded] = useState(true);
 
+  // タブのインデックスが画像数を超えた場合の調整
+  useEffect(() => {
+    if (selectedTabIndex >= images.length - 1) {
+      setSelectedTabIndex(Math.max(0, images.length - 2));
+    }
+  }, [images.length, selectedTabIndex]);
+
   // 画像がない、または1枚しかない場合
   if (images.length <= 1) {
     return (

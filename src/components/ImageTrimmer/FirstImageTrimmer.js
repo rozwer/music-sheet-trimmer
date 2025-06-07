@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
-import { Box, Typography, Button, Slider, Paper, FormControlLabel, Switch } from '@mui/material';
+import { Box, Typography, Button, Slider, Paper, FormControlLabel, Switch, IconButton, Tooltip, Divider } from '@mui/material';
+import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import DeleteIcon from '@mui/icons-material/Delete';
 import Cropper from 'react-cropper';
 import './cropper.css';
 
@@ -22,9 +24,7 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
       };
       img.src = image.preview;
     }
-  }, [image]);
-
-  // トリミング確定ボタンの処理
+  }, [image]);  // トリミング確定ボタンの処理
   const handleCropConfirm = () => {
     if (cropperRef.current && cropperRef.current.cropper) {
       const cropper = cropperRef.current.cropper;
@@ -55,7 +55,8 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
         // 全体を白で塗りつぶし
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-          // 選択部分のみを描画（左詰め処理）
+        
+        // 選択部分のみを描画（左詰め処理）
         const img = new Image();
         img.onload = () => {
           // 左詰め処理: 選択された内容を左端に移動し、右側に白い余白を補填
@@ -111,8 +112,61 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
     }
   };
 
+  // 画像を複製する
+  const duplicateImage = () => {
+    const imageToDuplicate = images[imageIndex];
+    const duplicatedImage = {
+      ...imageToDuplicate,
+      name: `${imageToDuplicate.name || 'image'} (複製)`,
+      id: `${imageToDuplicate.id || Date.now()}_copy`
+    };
+    
+    const updatedImages = [...images];
+    updatedImages.splice(imageIndex + 1, 0, duplicatedImage);
+    setImages(updatedImages);
+  };
+
+  // 画像を削除する
+  const deleteImage = () => {
+    if (images.length <= 1) return; // 最後の画像は削除不可
+    
+    const updatedImages = [...images];
+    updatedImages.splice(imageIndex, 1);
+    setImages(updatedImages);
+  };
   return (
     <Box>
+      {/* 画像操作部分 */}
+      <Paper sx={{ p: 2, mb: 2, bgcolor: '#f8f9fa' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="subtitle2" color="text.secondary">
+            画像操作
+          </Typography>
+          <Box>
+            <Tooltip title="画像を複製">
+              <IconButton 
+                onClick={duplicateImage}
+                size="small"
+                sx={{ mr: 1 }}
+              >
+                <ContentCopyIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            
+            <Tooltip title="画像を削除">
+              <IconButton 
+                onClick={deleteImage}
+                disabled={images.length <= 1}
+                size="small"
+                color="error"
+              >
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        </Box>
+      </Paper>
+
       <Paper sx={{ p: 2, mb: 2 }}>
         <Typography variant="subtitle1" gutterBottom>
           トリミング範囲の指定
@@ -181,10 +235,10 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
         </Button>
       </Paper>
 
-      {cropData && (
-        <Paper sx={{ p: 2 }}>
+      {cropData && (        <Paper sx={{ p: 2 }}>
           <Typography variant="subtitle1" gutterBottom>
-            トリミングプレビュー            {allowHorizontalTrim && (
+            トリミングプレビュー
+            {allowHorizontalTrim && (
               <Typography variant="caption" component="span" sx={{ ml: 2, color: 'text.secondary' }}>
                 （左詰め処理適用済み）
               </Typography>
