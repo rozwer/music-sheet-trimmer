@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppContext } from '../../contexts/AppContext';
-import { Box, Typography, Button, Slider, Paper, IconButton, Grid, Tooltip } from '@mui/material';
+import { Box, Typography, Button, Slider, Paper, IconButton, Grid, Tooltip, Chip, TextField, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import RotateLeftIcon from '@mui/icons-material/RotateLeft';
 import RotateRightIcon from '@mui/icons-material/RotateRight';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteIcon from '@mui/icons-material/Delete';
+import BookmarkIcon from '@mui/icons-material/Bookmark';
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder';
+import EditIcon from '@mui/icons-material/Edit';
 
 const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
-  const { images, setImages } = useAppContext();
+  const { images, setImages, yAxisPresets, addYAxisPreset, removeYAxisPreset, updateYAxisPreset } = useAppContext();
   const canvasRef = useRef(null);
   const imageContainerRef = useRef(null);
   const highlightRef = useRef(null);
@@ -19,9 +22,12 @@ const SubsequentImageTrimmer = ({ image, imageIndex, trimSettings }) => {
   const [imageObj, setImageObj] = useState(null);
   const [originalDimensions, setOriginalDimensions] = useState({ width: 0, height: 0 });
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStartY, setDragStartY] = useState(0);
-  const [hasInteracted, setHasInteracted] = useState(false);
+  const [dragStartY, setDragStartY] = useState(0);  const [hasInteracted, setHasInteracted] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  
+  // プリセット機能用の状態変数
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  const [presetName, setPresetName] = useState('');
 
   // 状態変数の現在の値をRefで追跡（クリーンアップ関数で最新値を使用するため）
   const stateRef = useRef({
@@ -327,7 +333,6 @@ const handleRightTrimChange = (event, newValue) => {
     updatedImages.splice(imageIndex + 1, 0, duplicatedImage);
     setImages(updatedImages);
   };
-
   // 画像を削除する
   const deleteImage = () => {
     if (images.length <= 1) return; // 最後の画像は削除不可
@@ -335,6 +340,28 @@ const handleRightTrimChange = (event, newValue) => {
     const updatedImages = [...images];
     updatedImages.splice(imageIndex, 1);
     setImages(updatedImages);
+  };
+
+  // プリセット機能
+  const handleSavePreset = () => {
+    setPresetDialogOpen(true);
+  };
+
+  const handleConfirmSavePreset = () => {
+    const name = presetName.trim() || `プリセット ${yAxisPresets.length + 1}`;
+    addYAxisPreset(yOffset, name);
+    setPresetName('');
+    setPresetDialogOpen(false);
+  };
+
+  const handleApplyPreset = (preset) => {
+    setHasInteracted(true);
+    setYOffset(preset.yOffset);
+    handleValuesChanged(rotation, preset.yOffset, leftTrim, rightTrim);
+  };
+
+  const handleDeletePreset = (presetId) => {
+    removeYAxisPreset(presetId);
   };
 
   // 残りのドラッグハンドリングコードは変更なし...
@@ -520,9 +547,46 @@ const handleRightTrimChange = (event, newValue) => {
               />
             </Box>
           </Grid>
-        </Grid>
-
-        <Box sx={{ mt: 3 }}>
+        </Grid>        <Box sx={{ mt: 3 }}>
+          <Box sx={{ mb: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="subtitle2">
+                Y軸プリセット
+              </Typography>
+              <Tooltip title="現在の位置をプリセットに保存">
+                <IconButton 
+                  onClick={handleSavePreset}
+                  size="small"
+                  color="primary"
+                >
+                  <BookmarkBorderIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            </Box>
+            
+            {yAxisPresets.length > 0 ? (
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                {yAxisPresets.map((preset) => (
+                  <Chip
+                    key={preset.id}
+                    label={`${preset.name} (${preset.yOffset >= 0 ? '+' : ''}${preset.yOffset})`}
+                    onClick={() => handleApplyPreset(preset)}
+                    onDelete={() => handleDeletePreset(preset.id)}
+                    variant={yOffset === preset.yOffset ? "filled" : "outlined"}
+                    color={yOffset === preset.yOffset ? "primary" : "default"}
+                    size="small"
+                    icon={<BookmarkIcon />}
+                    sx={{ cursor: 'pointer' }}
+                  />
+                ))}
+              </Box>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                プリセットが登録されていません
+              </Typography>
+            )}
+          </Box>
+          
   <Typography id="y-offset-slider" gutterBottom>
     縦位置調整（スライダー）
   </Typography>
@@ -588,10 +652,33 @@ const handleRightTrimChange = (event, newValue) => {
               max={originalDimensions.width ? Math.max(0, originalDimensions.width - leftTrim - 10) : 100}
               step={1}
               valueLabelDisplay="auto"
-            />
-          </Grid>
+            />          </Grid>
         </Grid>
       </Paper>
+
+      {/* プリセット保存ダイアログ */}
+      <Dialog open={presetDialogOpen} onClose={() => setPresetDialogOpen(false)}>
+        <DialogTitle>Y軸プリセットを保存</DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            現在のY軸位置（{yOffset >= 0 ? '+' : ''}{yOffset}）をプリセットとして保存します。
+          </Typography>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="プリセット名"
+            fullWidth
+            variant="outlined"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder={`プリセット ${yAxisPresets.length + 1}`}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPresetDialogOpen(false)}>キャンセル</Button>
+          <Button onClick={handleConfirmSavePreset} variant="contained">保存</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

@@ -17,13 +17,15 @@ export function AppProvider({ children }) {
 
   // 画像データ管理
   const [images, setImages] = useState([]);
-  
-  // トリミング設定
+    // トリミング設定
   const [trimSettings, setTrimSettings] = useState({
     height: 0,
     yPosition: 0,
     applied: false
   });
+  
+  // Y軸プリセット管理
+  const [yAxisPresets, setYAxisPresets] = useState([]);
   
   // レイアウト設定
   const [layoutSettings, setLayoutSettings] = useState({
@@ -44,13 +46,35 @@ export function AppProvider({ children }) {
   const removeImage = (index) => {
     setImages(prevImages => prevImages.filter((_, i) => i !== index));
   };
-
   // 画像の並び替え
   const reorderImages = (oldIndex, newIndex) => {
     const updatedImages = [...images];
     const [movedImage] = updatedImages.splice(oldIndex, 1);
     updatedImages.splice(newIndex, 0, movedImage);
     setImages(updatedImages);
+  };
+
+  // Y軸プリセット関連の関数
+  const addYAxisPreset = (yOffset, name = '') => {
+    const presetName = name || `プリセット ${yAxisPresets.length + 1}`;
+    const newPreset = {
+      id: Date.now(),
+      name: presetName,
+      yOffset: yOffset,
+      createdAt: new Date().toISOString()
+    };
+    setYAxisPresets(prev => [...prev, newPreset]);
+    return newPreset;
+  };
+
+  const removeYAxisPreset = (presetId) => {
+    setYAxisPresets(prev => prev.filter(preset => preset.id !== presetId));
+  };
+
+  const updateYAxisPreset = (presetId, updates) => {
+    setYAxisPresets(prev => prev.map(preset => 
+      preset.id === presetId ? { ...preset, ...updates } : preset
+    ));
   };
 
   // 次のステップへ
@@ -72,7 +96,6 @@ export function AppProvider({ children }) {
       setCurrentStep(currentStep - 1);
     }
   };
-
   const value = {
     currentStep,
     setCurrentStep,
@@ -84,6 +107,11 @@ export function AppProvider({ children }) {
     reorderImages,
     trimSettings,
     setTrimSettings,
+    yAxisPresets,
+    setYAxisPresets,
+    addYAxisPreset,
+    removeYAxisPreset,
+    updateYAxisPreset,
     layoutSettings,
     setLayoutSettings,
     nextStep,

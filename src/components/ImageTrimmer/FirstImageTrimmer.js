@@ -7,7 +7,7 @@ import Cropper from 'react-cropper';
 import './cropper.css';
 
 const FirstImageTrimmer = ({ image, imageIndex }) => {
-  const { setTrimSettings, images, setImages } = useAppContext();
+  const { setTrimSettings, images, setImages, addYAxisPreset } = useAppContext();
   const cropperRef = useRef(null);
   const [cropData, setCropData] = useState(null);
   const [imageWidth, setImageWidth] = useState(null);
@@ -29,8 +29,7 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
     if (cropperRef.current && cropperRef.current.cropper) {
       const cropper = cropperRef.current.cropper;
       const data = cropper.getData();
-      
-      // トリミング設定を保存（縦方向のみ他の画像に適用される）
+        // トリミング設定を保存（縦方向のみ他の画像に適用される）
       setTrimSettings({
         height: data.height,
         yPosition: data.y,
@@ -41,6 +40,9 @@ const FirstImageTrimmer = ({ image, imageIndex }) => {
         horizontalTrimmed: allowHorizontalTrim, // 横方向のトリミングを適用するかどうか
         horizontalData: allowHorizontalTrim ? { x: data.x, width: data.width } : null // 横方向のトリミング情報
       });
+
+      // 基準y位置をプリセットとして追加
+      addYAxisPreset(0, '基準位置（1枚目）');
 
       // トリミングプレビュー用のキャンバス作成
       let processedPreview;
